@@ -1,554 +1,235 @@
-import { useState } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { Camera, Save, ArrowLeft, ArrowRight } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { 
+  Camera, 
+  Save, 
+  ArrowLeft, 
+  ArrowRight, 
+  Loader2, 
+  CheckCircle,
+  X,
+  Image as ImageIcon
+} from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-
-interface ChecklistItem {
-  id: string;
-  text: string;
-  section: string;
-  status: "conforme" | "nao_conforme" | "nao_aplicavel" | null;
-  observations: string;
-  photos: string[];
-}
+import { useAudits, SectionWithItems, ChecklistItemWithResult } from "@/hooks/useAudits";
+import { uploadAuditImage } from "@/lib/supabase-service";
 
 interface ChecklistFormProps {
   onBack: () => void;
   onSave: () => void;
 }
 
-const RDC_216_ITEMS: ChecklistItem[] = [
-  {
-    id: "1.1",
-    text: "As instalações são isentas de focos de insalubridade, não existem focos de contaminação e não oferecem riscos à saúde dos manipuladores de alimentos?",
-    section: "Edificação, Instalações, Equipamentos, Móveis e Utensílios",
-    status: null,
-    observations: "",
-    photos: []
-  },
-  {
-    id: "1.2",
-    text: "O acesso direto e independente é garantido, não comum a outros usos (habitação)?",
-    section: "Edificação, Instalações, Equipamentos, Móveis e Utensílios",
-    status: null,
-    observations: "",
-    photos: []
-  },
-  {
-    id: "1.3",
-    text: "As áreas para recepção e depósito de matéria-prima, ingredientes e embalagens são distintas das áreas de produção, armazenamento e expedição de produto final?",
-    section: "Edificação, Instalações, Equipamentos, Móveis e Utensílios",
-    status: null,
-    observations: "",
-    photos: []
-  },
-  {
-    id: "1.4",
-    text: "O piso é liso, impermeável, lavável, de fácil higienização e encontra-se em bom estado de conservação?",
-    section: "Edificação, Instalações, Equipamentos, Móveis e Utensílios",
-    status: null,
-    observations: "",
-    photos: []
-  },
-  {
-    id: "1.5",
-    text: "As paredes e divisórias são lisas, impermeáveis, laváveis, de cores claras e encontram-se em bom estado de conservação (sem rachaduras, umidade ou descascamento)?",
-    section: "Edificação, Instalações, Equipamentos, Móveis e Utensílios",
-    status: null,
-    observations: "",
-    photos: []
-  },
-  {
-    id: "1.6",
-    text: "Os tetos são lisos, impermeáveis, laváveis, de cores claras e encontram-se em bom estado de conservação (sem infiltrações, umidade ou mofo)?",
-    section: "Edificação, Instalações, Equipamentos, Móveis e Utensílios",
-    status: null,
-    observations: "",
-    photos: []
-  },
-  {
-    id: "1.7",
-    text: "As portas são lisas, laváveis, de fácil higienização, com fechamento automático e com barreiras protetoras contra insetos e roedores (se aplicável)?",
-    section: "Edificação, Instalações, Equipamentos, Móveis e Utensílios",
-    status: null,
-    observations: "",
-    photos: []
-  },
-  {
-    id: "1.8",
-    text: "As janelas são providas de telas milimétricas para proteção contra insetos, de fácil remoção para limpeza e em bom estado de conservação?",
-    section: "Edificação, Instalações, Equipamentos, Móveis e Utensílios",
-    status: null,
-    observations: "",
-    photos: []
-  },
-  {
-    id: "1.9",
-    text: "A iluminação é adequada, uniforme e não altera as características sensoriais dos alimentos (cor, odor)?",
-    section: "Edificação, Instalações, Equipamentos, Móveis e Utensílios",
-    status: null,
-    observations: "",
-    photos: []
-  },
-  {
-    id: "1.10",
-    text: "As luminárias estão protegidas contra estilhaçamento?",
-    section: "Edificação, Instalações, Equipamentos, Móveis e Utensílios",
-    status: null,
-    observations: "",
-    photos: []
-  },
-  {
-    id: "1.11",
-    text: "A ventilação é suficiente para renovar o ar e evitar o acúmulo de calor e vapores, sem causar contaminação cruzada?",
-    section: "Edificação, Instalações, Equipamentos, Móveis e Utensílios",
-    status: null,
-    observations: "",
-    photos: []
-  },
-  {
-    id: "1.12",
-    text: "As instalações sanitárias (banheiros e vestiários) são separadas das áreas de manipulação de alimentos e estão em bom estado de conservação e higiene?",
-    section: "Edificação, Instalações, Equipamentos, Móveis e Utensílios",
-    status: null,
-    observations: "",
-    photos: []
-  },
-  {
-    id: "1.13",
-    text: "Existem lavatórios para as mãos nas áreas de manipulação, com água corrente, sabonete líquido antisséptico ou sabonete e antisséptico, toalhas de papel não reciclável ou secador elétrico e lixeira com acionamento não manual?",
-    section: "Edificação, Instalações, Equipamentos, Móveis e Utensílios",
-    status: null,
-    observations: "",
-    photos: []
-  },
-  {
-    id: "1.14",
-    text: "Os equipamentos e móveis são lisos, impermeáveis, laváveis, não oxidáveis e em bom estado de conservação e higiene?",
-    section: "Edificação, Instalações, Equipamentos, Móveis e Utensílios",
-    status: null,
-    observations: "",
-    photos: []
-  },
-  {
-    id: "1.15",
-    text: "Os utensílios são de material adequado, lisos, impermeáveis, laváveis, não oxidáveis e em bom estado de conservação e higiene?",
-    section: "Edificação, Instalações, Equipamentos, Móveis e Utensílios",
-    status: null,
-    observations: "",
-    photos: []
-  },
-  {
-    id: "1.16",
-    text: "Existe área específica para higienização de utensílios e equipamentos?",
-    section: "Edificação, Instalações, Equipamentos, Móveis e Utensílios",
-    status: null,
-    observations: "",
-    photos: []
-  },
-
-  // 2. Abastecimento de Água
-  {
-    id: "2.1",
-    text: "A água utilizada para o preparo dos alimentos e para a higienização é potável e em quantidade suficiente?",
-    section: "Abastecimento de Água",
-    status: null,
-    observations: "",
-    photos: []
-  },
-  {
-    id: "2.2",
-    text: "Há um sistema de tratamento de água próprio, se a água não for proveniente de rede pública, e é comprovada a sua potabilidade por laudos de análise?",
-    section: "Abastecimento de Água",
-    status: null,
-    observations: "",
-    photos: []
-  },
-  {
-    id: "2.3",
-    text: "Os reservatórios de água são limpos e desinfetados periodicamente, com registros que comprovem essas ações?",
-    section: "Abastecimento de Água",
-    status: null,
-    observations: "",
-    photos: []
-  },
-
-  // 3. Esgotamento Sanitário e Resíduos Sólidos
-  {
-    id: "3.1",
-    text: "O sistema de esgoto está ligado à rede pública ou possui sistema individual devidamente licenciado pelos órgãos competentes?",
-    section: "Esgotamento Sanitário e Resíduos Sólidos",
-    status: null,
-    observations: "",
-    photos: []
-  },
-  {
-    id: "3.2",
-    text: "As caixas de gordura e ralos sifonados estão limpos e em bom estado de conservação?",
-    section: "Esgotamento Sanitário e Resíduos Sólidos",
-    status: null,
-    observations: "",
-    photos: []
-  },
-  {
-    id: "3.3",
-    text: "O descarte de resíduos sólidos é realizado em recipientes com tampas e revestidos de sacos plásticos, em local apropriado e com frequência adequada?",
-    section: "Esgotamento Sanitário e Resíduos Sólidos",
-    status: null,
-    observations: "",
-    photos: []
-  },
-
-  // 4. Manipulação de Alimentos
-  {
-    id: "4.1",
-    text: "A recepção de matérias-primas, ingredientes e embalagens é realizada em área protegida e limpa?",
-    section: "Manipulação de Alimentos",
-    status: null,
-    observations: "",
-    photos: []
-  },
-  {
-    id: "4.2",
-    text: "São adotados critérios para avaliação e seleção dos fornecedores de matérias-primas, ingredientes e embalagens?",
-    section: "Manipulação de Alimentos",
-    status: null,
-    observations: "",
-    photos: []
-  },
-  {
-    id: "4.3",
-    text: "O transporte de matérias-primas e ingredientes é realizado em condições adequadas de higiene e conservação?",
-    section: "Manipulação de Alimentos",
-    status: null,
-    observations: "",
-    photos: []
-  },
-  {
-    id: "4.4",
-    text: "O armazenamento de matérias-primas, ingredientes e produtos acabados é feito em locais secos, limpos, arejados e protegidos de pragas e contaminação cruzada?",
-    section: "Manipulação de Alimentos",
-    status: null,
-    observations: "",
-    photos: []
-  },
-  {
-    id: "4.5",
-    text: "Os alimentos são armazenados em estrados ou prateleiras, distantes do chão e das paredes?",
-    section: "Manipulação de Alimentos",
-    status: null,
-    observations: "",
-    photos: []
-  },
-  {
-    id: "4.6",
-    text: "O sistema 'primeiro que entra, primeiro que sai' (PEPS) é aplicado para garantir a rotatividade dos estoques?",
-    section: "Manipulação de Alimentos",
-    status: null,
-    observations: "",
-    photos: []
-  },
-  {
-    id: "4.7",
-    text: "A dessalgue de carnes é realizada sob refrigeração ou em água corrente?",
-    section: "Manipulação de Alimentos",
-    status: null,
-    observations: "",
-    photos: []
-  },
-  {
-    id: "4.8",
-    text: "A descongelamento de alimentos é feita em refrigerador, forno de micro-ondas ou sob água corrente fria?",
-    section: "Manipulação de Alimentos",
-    status: null,
-    observations: "",
-    photos: []
-  },
-  {
-    id: "4.9",
-    text: "A manipulação de alimentos crus é realizada em áreas ou bancadas separadas dos alimentos prontos para o consumo, para evitar contaminação cruzada?",
-    section: "Manipulação de Alimentos",
-    status: null,
-    observations: "",
-    photos: []
-  },
-  {
-    id: "4.10",
-    text: "A cocção dos alimentos atinge as temperaturas e tempos adequados para garantir a eliminação de microrganismos patogênicos?",
-    section: "Manipulação de Alimentos",
-    status: null,
-    observations: "",
-    photos: []
-  },
-  {
-    id: "4.11",
-    text: "O resfriamento e o reaquecimento dos alimentos são realizados de forma rápida e segura, evitando a zona de perigo de temperatura?",
-    section: "Manipulação de Alimentos",
-    status: null,
-    observations: "",
-    photos: []
-  },
-  {
-    id: "4.12",
-    text: "Os alimentos quentes são mantidos acima de 60°C e os alimentos frios abaixo de 5°C durante a distribuição?",
-    section: "Manipulação de Alimentos",
-    status: null,
-    observations: "",
-    photos: []
-  },
-  {
-    id: "4.13",
-    text: "A exposição de alimentos para consumo imediato é feita em equipamentos que mantenham as temperaturas adequadas (estufas, balcões refrigerados)?",
-    section: "Manipulação de Alimentos",
-    status: null,
-    observations: "",
-    photos: []
-  },
-
-  // 5. Higienização das Instalações, Equipamentos, Móveis e Utensílios
-  {
-    id: "5.1",
-    text: "Existe um Programa de Higienização documentado, com os procedimentos, frequência, produtos utilizados e responsável?",
-    section: "Higienização das Instalações, Equipamentos, Móveis e Utensílios",
-    status: null,
-    observations: "",
-    photos: []
-  },
-  {
-    id: "5.2",
-    text: "Os produtos saneantes são registrados na ANVISA e utilizados de acordo com as instruções do fabricante?",
-    section: "Higienização das Instalações, Equipamentos, Móveis e Utensílios",
-    status: null,
-    observations: "",
-    photos: []
-  },
-  {
-    id: "5.3",
-    text: "Os utensílios e equipamentos são higienizados antes e após cada uso, ou sempre que necessário?",
-    section: "Higienização das Instalações, Equipamentos, Móveis e Utensílios",
-    status: null,
-    observations: "",
-    photos: []
-  },
-  {
-    id: "5.4",
-    text: "As áreas de manipulação são higienizadas após cada turno de trabalho ou sempre que necessário?",
-    section: "Higienização das Instalações, Equipamentos, Móveis e Utensílios",
-    status: null,
-    observations: "",
-    photos: []
-  },
-
-  // 6. Controle Integrado de Vetores e Pragas Urbanas
-  {
-    id: "6.1",
-    text: "Existe um Programa de Controle Integrado de Vetores e Pragas Urbanas, com ações preventivas e corretivas?",
-    section: "Controle Integrado de Vetores e Pragas Urbanas",
-    status: null,
-    observations: "",
-    photos: []
-  },
-  {
-    id: "6.2",
-    text: "São adotadas medidas para evitar o acesso de pragas, como telas, portas com fechamento automático e vedação de frestas?",
-    section: "Controle Integrado de Vetores e Pragas Urbanas",
-    status: null,
-    observations: "",
-    photos: []
-  },
-  {
-    id: "6.3",
-    text: "A aplicação de produtos químicos é realizada por empresa especializada e licenciada, com registro dos produtos utilizados?",
-    section: "Controle Integrado de Vetores e Pragas Urbanas",
-    status: null,
-    observations: "",
-    photos: []
-  },
-
-  // 7. Manipuladores
-  {
-    id: "7.1",
-    text: "Os manipuladores possuem atestado de saúde ocupacional (ASO) atualizado e são submetidos a exames periódicos?",
-    section: "Manipuladores",
-    status: null,
-    observations: "",
-    photos: []
-  },
-  {
-    id: "7.2",
-    text: "Os manipuladores recebem capacitação em higiene pessoal, manipulação de alimentos e doenças transmitidas por alimentos (DTAs)?",
-    section: "Manipuladores",
-    status: null,
-    observations: "",
-    photos: []
-  },
-  {
-    id: "7.3",
-    text: "Os manipuladores utilizam uniformes limpos e adequados para a atividade, incluindo toucas, aventais e sapatos fechados?",
-    section: "Manipuladores",
-    status: null,
-    observations: "",
-    photos: []
-  },
-  {
-    id: "7.4",
-    text: "As mãos dos manipuladores são lavadas e higienizadas adequadamente antes de iniciar as atividades, após usar o banheiro, após tossir/espirrar, após manusear lixo, após manusear alimentos crus e sempre que necessário?",
-    section: "Manipuladores",
-    status: null,
-    observations: "",
-    photos: []
-  },
-  {
-    id: "7.5",
-    text: "Os manipuladores que apresentam lesões nas mãos, diarreia, vômito ou outras doenças transmissíveis são afastados da manipulação de alimentos?",
-    section: "Manipuladores",
-    status: null,
-    observations: "",
-    photos: []
-  },
-  {
-    id: "7.6",
-    text: "É proibido fumar, tossir, espirrar sobre os alimentos, comer, beber ou mascar goma nas áreas de manipulação?",
-    section: "Manipuladores",
-    status: null,
-    observations: "",
-    photos: []
-  },
-
-  // 8. Responsável pelas Atividades de Manipulação de Alimentos
-  {
-    id: "8.1",
-    text: "Existe um responsável pela operação devidamente capacitado e com comprovante de capacitação em Boas Práticas de Manipulação de Alimentos?",
-    section: "Responsável pelas Atividades de Manipulação de Alimentos",
-    status: null,
-    observations: "",
-    photos: []
-  },
-  {
-    id: "8.2",
-    text: "O responsável supervisiona as atividades de manipulação, garantindo o cumprimento das Boas Práticas?",
-    section: "Responsável pelas Atividades de Manipulação de Alimentos",
-    status: null,
-    observations: "",
-    photos: []
-  },
-
-  // 9. Documentação e Registro
-  {
-    id: "9.1",
-    text: "O estabelecimento possui o Manual de Boas Práticas de Manipulação de Alimentos (MBPMA) atualizado?",
-    section: "Documentação e Registro",
-    status: null,
-    observations: "",
-    photos: []
-  },
-  {
-    id: "9.2",
-    text: "Existem Procedimentos Operacionais Padronizados (POPs) específicos para cada etapa da manipulação de alimentos (higienização de instalações, equipamentos, controle de pragas, controle de saúde dos manipuladores, etc.)?",
-    section: "Documentação e Registro",
-    status: null,
-    observations: "",
-    photos: []
-  },
-  {
-    id: "9.3",
-    text: "Os POPs estão disponíveis para os manipuladores e são de fácil compreensão?",
-    section: "Documentação e Registro",
-    status: null,
-    observations: "",
-    photos: []
-  },
-  {
-    id: "9.4",
-    text: "São mantidos registros das ações de controle (temperaturas, higienização, controle de pragas, capacitação de manipuladores, etc.)?",
-    section: "Documentação e Registro",
-    status: null,
-    observations: "",
-    photos: []
-  },
-  {
-    id: "9.5",
-    text: "Os registros são de fácil acesso e estão disponíveis para a fiscalização?",
-    section: "Documentação e Registro",
-    status: null,
-    observations: "",
-    photos: []
-  },
-
-  // 10. Controle de Qualidade (Alimentos)
-  {
-    id: "10.1",
-    text: "Existe controle da qualidade das matérias-primas, ingredientes e embalagens, com verificação de procedência, data de validade e condições de armazenamento?",
-    section: "Controle de Qualidade (Alimentos)",
-    status: null,
-    observations: "",
-    photos: []
-  },
-  {
-    id: "10.2",
-    text: "Existe controle da qualidade do produto final, com monitoramento de temperaturas, tempo de exposição e características sensoriais?",
-    section: "Controle de Qualidade (Alimentos)",
-    status: null,
-    observations: "",
-    photos: []
-  },
-  {
-    id: "10.3",
-    text: "São realizadas análises laboratoriais (físico-químicas e microbiológicas) dos alimentos e/ou água, se aplicável, por laboratórios credenciados?",
-    section: "Controle de Qualidade (Alimentos)",
-    status: null,
-    observations: "",
-    photos: []
-  },
-];
-
 export const ChecklistForm = ({ onBack, onSave }: ChecklistFormProps) => {
-  const [items, setItems] = useState<ChecklistItem[]>(RDC_216_ITEMS);
-  const [currentSection, setCurrentSection] = useState(0);
   const { toast } = useToast();
+  const {
+    currentAudit,
+    checklistSections,
+    setChecklistSections,
+    startNewAudit,
+    saveItems,
+    finishAudit,
+    loading,
+  } = useAudits();
 
-  const sections = Array.from(new Set(items.map(item => item.section)));
-  const currentSectionItems = items.filter(item => item.section === sections[currentSection]);
-  
+  const [currentSection, setCurrentSection] = useState(0);
+  const [saving, setSaving] = useState(false);
+  const [locationName, setLocationName] = useState("");
+  const [isStartingAudit, setIsStartingAudit] = useState(!currentAudit);
+  const [uploadingImage, setUploadingImage] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [activeItemId, setActiveItemId] = useState<string | null>(null);
+
+  // Initialize audit if needed
+  useEffect(() => {
+    if (!currentAudit && !isStartingAudit) {
+      setIsStartingAudit(true);
+    }
+  }, [currentAudit, isStartingAudit]);
+
+  const handleStartAudit = async () => {
+    if (!locationName.trim()) {
+      toast({
+        title: "Local obrigatório",
+        description: "Informe o local da auditoria para continuar.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setSaving(true);
+    const audit = await startNewAudit(locationName.trim());
+    setSaving(false);
+
+    if (audit) {
+      setIsStartingAudit(false);
+    }
+  };
+
+  const sections = checklistSections;
+  const currentSectionData = sections[currentSection];
+  const currentSectionItems = currentSectionData?.items || [];
+
   const calculateProgress = () => {
-    const completedItems = items.filter(item => item.status !== null).length;
-    return (completedItems / items.length) * 100;
+    const allItems = sections.flatMap(s => s.items);
+    const completedItems = allItems.filter(item => item.result !== null).length;
+    return allItems.length > 0 ? (completedItems / allItems.length) * 100 : 0;
   };
 
-  const updateItemStatus = (itemId: string, status: ChecklistItem["status"]) => {
-    setItems(prev => prev.map(item => 
-      item.id === itemId ? { ...item, status } : item
-    ));
+  const calculateSummary = () => {
+    const allItems = sections.flatMap(s => s.items);
+    return {
+      conforme_count: allItems.filter(i => i.result === 'conforme').length,
+      nao_conforme_count: allItems.filter(i => i.result === 'nao_conforme').length,
+      nao_aplicavel_count: allItems.filter(i => i.result === 'nao_aplicavel').length,
+    };
   };
 
-  const updateItemObservations = (itemId: string, observations: string) => {
-    setItems(prev => prev.map(item => 
-      item.id === itemId ? { ...item, observations } : item
-    ));
+  const updateItemStatus = (itemId: string, result: ChecklistItemWithResult["result"]) => {
+    setChecklistSections(prev => prev.map(section => ({
+      ...section,
+      items: section.items.map(item =>
+        item.id === itemId ? { ...item, result } : item
+      ),
+    })));
+  };
+
+  const updateItemObservations = (itemId: string, observation: string) => {
+    setChecklistSections(prev => prev.map(section => ({
+      ...section,
+      items: section.items.map(item =>
+        item.id === itemId ? { ...item, observation } : item
+      ),
+    })));
   };
 
   const handleTakePhoto = (itemId: string) => {
-    toast({
-      title: "Funcionalidade de Câmera",
-      description: "Para usar a câmera, este app pode ser convertido para mobile com Capacitor.",
-    });
+    setActiveItemId(itemId);
+    fileInputRef.current?.click();
   };
 
-  const handleSave = () => {
-    toast({
-      title: "Checklist Salvo",
-      description: "Seu progresso foi salvo com sucesso.",
-    });
-    onSave();
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !activeItemId || !currentAudit) return;
+
+    setUploadingImage(activeItemId);
+    
+    try {
+      // First we need to ensure the audit_item exists in the database
+      // For now, we'll store the image URL locally and save it when the audit is saved
+      const { data: imageUrl, error } = await uploadAuditImage(file, activeItemId);
+      
+      if (error) {
+        toast({
+          title: "Erro ao enviar imagem",
+          description: error,
+          variant: "destructive",
+        });
+      } else if (imageUrl) {
+        // Update local state with the image
+        setChecklistSections(prev => prev.map(section => ({
+          ...section,
+          items: section.items.map(item =>
+            item.id === activeItemId 
+              ? { ...item, photos: [...item.photos, imageUrl] } 
+              : item
+          ),
+        })));
+
+        toast({
+          title: "Imagem enviada",
+          description: "Foto adicionada com sucesso.",
+        });
+      }
+    } catch (err) {
+      console.error('[ChecklistForm] Image upload error:', err);
+      toast({
+        title: "Erro",
+        description: "Falha ao enviar imagem.",
+        variant: "destructive",
+      });
+    } finally {
+      setUploadingImage(null);
+      setActiveItemId(null);
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
   };
 
-  const getStatusColor = (status: ChecklistItem["status"]) => {
-    switch (status) {
+  const handleSave = async () => {
+    if (!currentAudit) return;
+
+    setSaving(true);
+
+    // Prepare items for saving
+    const allItems = sections.flatMap(s => s.items);
+    const itemsToSave = allItems
+      .filter(item => item.result !== null)
+      .map(item => ({
+        checklist_item_id: item.id,
+        result: item.result,
+        observation: item.observation || null,
+      }));
+
+    const success = await saveItems(currentAudit.id, itemsToSave);
+    setSaving(false);
+
+    if (success) {
+      toast({
+        title: "Progresso salvo",
+        description: "Seus dados foram salvos com sucesso.",
+      });
+    }
+  };
+
+  const handleFinish = async () => {
+    if (!currentAudit) return;
+
+    const summary = calculateSummary();
+    const progress = calculateProgress();
+
+    if (progress < 100) {
+      toast({
+        title: "Checklist incompleto",
+        description: `Você completou apenas ${Math.round(progress)}% do checklist. Deseja finalizar mesmo assim?`,
+        variant: "destructive",
+      });
+      // In a real app, you'd show a confirmation dialog here
+    }
+
+    setSaving(true);
+
+    // Save all items first
+    const allItems = sections.flatMap(s => s.items);
+    const itemsToSave = allItems
+      .filter(item => item.result !== null)
+      .map(item => ({
+        checklist_item_id: item.id,
+        result: item.result,
+        observation: item.observation || null,
+      }));
+
+    const itemsSaved = await saveItems(currentAudit.id, itemsToSave);
+    
+    if (itemsSaved) {
+      const success = await finishAudit(currentAudit.id, summary);
+      if (success) {
+        onSave();
+      }
+    }
+
+    setSaving(false);
+  };
+
+  const getStatusColor = (result: ChecklistItemWithResult["result"]) => {
+    switch (result) {
       case "conforme":
         return "bg-success text-success-foreground";
       case "nao_conforme":
@@ -560,24 +241,127 @@ export const ChecklistForm = ({ onBack, onSave }: ChecklistFormProps) => {
     }
   };
 
-  return (
-    <div className="space-y-6 animate-fade-in">
-      {/* Header */}
-      <div className="flex justify-between items-center">
+  // Show audit start form
+  if (isStartingAudit || !currentAudit) {
+    return (
+      <div className="space-y-6 animate-fade-in">
         <div className="flex items-center space-x-4">
           <Button variant="outline" onClick={onBack}>
             <ArrowLeft className="w-4 h-4 mr-2" />
             Voltar
           </Button>
           <div>
-            <h1 className="text-3xl font-bold text-primary">Checklist RDC 216/2004</h1>
-            <p className="text-muted-foreground">Regulamento Técnico de Boas Práticas</p>
+            <h1 className="text-3xl font-bold text-primary">Nova Auditoria</h1>
+            <p className="text-muted-foreground">Preencha os dados para iniciar</p>
           </div>
         </div>
-        <Button onClick={handleSave} className="bg-gradient-primary">
-          <Save className="w-4 h-4 mr-2" />
-          Salvar Progresso
-        </Button>
+
+        <Card className="shadow-card max-w-md">
+          <CardHeader>
+            <CardTitle>Dados da Auditoria</CardTitle>
+            <CardDescription>
+              Informe o local onde a auditoria será realizada
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Local / Estabelecimento *</label>
+              <Input
+                value={locationName}
+                onChange={(e) => setLocationName(e.target.value)}
+                placeholder="Ex: Restaurante Central, Padaria São João..."
+                disabled={saving}
+              />
+            </div>
+
+            <Button 
+              onClick={handleStartAudit} 
+              className="w-full bg-gradient-primary"
+              disabled={saving || loading}
+            >
+              {saving ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Iniciando...
+                </>
+              ) : (
+                <>
+                  <CheckCircle className="w-4 h-4 mr-2" />
+                  Iniciar Auditoria
+                </>
+              )}
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // Show loading while fetching checklist
+  if (loading || sections.length === 0) {
+    return (
+      <div className="flex justify-center items-center py-20">
+        <div className="text-center space-y-4">
+          <Loader2 className="h-12 w-12 animate-spin text-primary mx-auto" />
+          <p className="text-muted-foreground">Carregando checklist...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6 animate-fade-in">
+      {/* Hidden file input */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleFileChange}
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+      />
+
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div className="flex items-center space-x-4">
+          <Button variant="outline" onClick={onBack}>
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Voltar
+          </Button>
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-bold text-primary">Checklist RDC 216/2004</h1>
+            <p className="text-muted-foreground text-sm">
+              {currentAudit.location || 'Auditoria em andamento'}
+            </p>
+          </div>
+        </div>
+        <div className="flex space-x-2 w-full sm:w-auto">
+          <Button 
+            variant="outline" 
+            onClick={handleSave} 
+            disabled={saving}
+            className="flex-1 sm:flex-none"
+          >
+            {saving ? (
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            ) : (
+              <Save className="w-4 h-4 mr-2" />
+            )}
+            Salvar
+          </Button>
+          <Button 
+            onClick={handleFinish} 
+            className="bg-gradient-primary flex-1 sm:flex-none"
+            disabled={saving}
+          >
+            {saving ? (
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            ) : (
+              <CheckCircle className="w-4 h-4 mr-2" />
+            )}
+            Finalizar
+          </Button>
+        </div>
       </div>
 
       {/* Progress */}
@@ -589,28 +373,41 @@ export const ChecklistForm = ({ onBack, onSave }: ChecklistFormProps) => {
               <span>{Math.round(calculateProgress())}% concluído</span>
             </div>
             <Progress value={calculateProgress()} className="h-2" />
+            <div className="flex justify-between text-xs text-muted-foreground pt-2">
+              <span className="text-success">
+                ✓ {calculateSummary().conforme_count} conforme
+              </span>
+              <span className="text-destructive">
+                ✗ {calculateSummary().nao_conforme_count} não conforme
+              </span>
+              <span>
+                — {calculateSummary().nao_aplicavel_count} N/A
+              </span>
+            </div>
           </div>
         </CardContent>
       </Card>
 
       {/* Section Navigation */}
-      <div className="flex justify-between items-center">
-        <h2 className="text-xl font-semibold text-primary">
-          {sections[currentSection]}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <h2 className="text-lg sm:text-xl font-semibold text-primary">
+          {currentSectionData?.title || 'Seção'}
         </h2>
         <div className="flex space-x-2">
           <Button
             variant="outline"
+            size="sm"
             onClick={() => setCurrentSection(prev => Math.max(0, prev - 1))}
             disabled={currentSection === 0}
           >
             <ArrowLeft className="w-4 h-4" />
           </Button>
-          <span className="text-sm text-muted-foreground self-center">
+          <span className="text-sm text-muted-foreground self-center whitespace-nowrap">
             {currentSection + 1} de {sections.length}
           </span>
           <Button
             variant="outline"
+            size="sm"
             onClick={() => setCurrentSection(prev => Math.min(sections.length - 1, prev + 1))}
             disabled={currentSection === sections.length - 1}
           >
@@ -621,87 +418,135 @@ export const ChecklistForm = ({ onBack, onSave }: ChecklistFormProps) => {
 
       {/* Checklist Items */}
       <div className="space-y-4">
-        {currentSectionItems.map((item) => (
+        {currentSectionItems.map((item, index) => (
           <Card key={item.id} className="shadow-card">
-            <CardHeader>
-              <div className="flex justify-between items-start">
+            <CardHeader className="pb-2">
+              <div className="flex justify-between items-start gap-2">
                 <div className="flex-1">
-                  <CardTitle className="text-lg">{item.id}</CardTitle>
-                  <CardDescription className="mt-2">{item.text}</CardDescription>
+                  <CardTitle className="text-base">Item {index + 1}</CardTitle>
+                  <CardDescription className="mt-1 text-sm">{item.description}</CardDescription>
                 </div>
-                <Badge className={getStatusColor(item.status)}>
-                  {item.status === "conforme" ? "Conforme" :
-                   item.status === "nao_conforme" ? "Não Conforme" :
-                   item.status === "nao_aplicavel" ? "Não Aplicável" : "Pendente"}
+                <Badge className={getStatusColor(item.result)}>
+                  {item.result === "conforme" ? "Conforme" :
+                   item.result === "nao_conforme" ? "Não Conforme" :
+                   item.result === "nao_aplicavel" ? "N/A" : "Pendente"}
                 </Badge>
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
               {/* Status Options */}
-              <div className="space-y-3">
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id={`${item.id}-conforme`}
-                    checked={item.status === "conforme"}
-                    onCheckedChange={(checked) => 
-                      updateItemStatus(item.id, checked ? "conforme" : null)
-                    }
-                  />
-                  <label htmlFor={`${item.id}-conforme`} className="text-sm font-medium text-success">
-                    Conforme
-                  </label>
-                </div>
-                
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id={`${item.id}-nao-conforme`}
-                    checked={item.status === "nao_conforme"}
-                    onCheckedChange={(checked) => 
-                      updateItemStatus(item.id, checked ? "nao_conforme" : null)
-                    }
-                  />
-                  <label htmlFor={`${item.id}-nao-conforme`} className="text-sm font-medium text-destructive">
-                    Não Conforme
-                  </label>
-                </div>
-                
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id={`${item.id}-nao-aplicavel`}
-                    checked={item.status === "nao_aplicavel"}
-                    onCheckedChange={(checked) => 
-                      updateItemStatus(item.id, checked ? "nao_aplicavel" : null)
-                    }
-                  />
-                  <label htmlFor={`${item.id}-nao-aplicavel`} className="text-sm font-medium text-muted-foreground">
-                    Não Aplicável
-                  </label>
-                </div>
+              <div className="grid grid-cols-3 gap-2">
+                <Button
+                  variant={item.result === "conforme" ? "default" : "outline"}
+                  size="sm"
+                  className={item.result === "conforme" ? "bg-success hover:bg-success/90" : ""}
+                  onClick={() => updateItemStatus(item.id, item.result === "conforme" ? null : "conforme")}
+                >
+                  ✓ Conforme
+                </Button>
+                <Button
+                  variant={item.result === "nao_conforme" ? "default" : "outline"}
+                  size="sm"
+                  className={item.result === "nao_conforme" ? "bg-destructive hover:bg-destructive/90" : ""}
+                  onClick={() => updateItemStatus(item.id, item.result === "nao_conforme" ? null : "nao_conforme")}
+                >
+                  ✗ Não Conf.
+                </Button>
+                <Button
+                  variant={item.result === "nao_aplicavel" ? "default" : "outline"}
+                  size="sm"
+                  className={item.result === "nao_aplicavel" ? "bg-muted text-muted-foreground" : ""}
+                  onClick={() => updateItemStatus(item.id, item.result === "nao_aplicavel" ? null : "nao_aplicavel")}
+                >
+                  — N/A
+                </Button>
               </div>
 
               {/* Observations */}
               <div className="space-y-2">
                 <label className="text-sm font-medium">Observações</label>
                 <Textarea
-                  value={item.observations}
+                  value={item.observation}
                   onChange={(e) => updateItemObservations(item.id, e.target.value)}
                   placeholder="Adicione observações relevantes..."
-                  className="min-h-[80px]"
+                  className="min-h-[60px] text-sm"
                 />
               </div>
+
+              {/* Photos */}
+              {item.photos.length > 0 && (
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Fotos ({item.photos.length})</label>
+                  <div className="flex flex-wrap gap-2">
+                    {item.photos.map((photo, idx) => (
+                      <div key={idx} className="relative w-16 h-16">
+                        <img 
+                          src={photo} 
+                          alt={`Foto ${idx + 1}`} 
+                          className="w-full h-full object-cover rounded-md"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Photo Button */}
               <Button
                 variant="outline"
+                size="sm"
                 onClick={() => handleTakePhoto(item.id)}
                 className="w-full"
+                disabled={uploadingImage === item.id}
               >
-                <Camera className="w-4 h-4 mr-2" />
-                Adicionar Foto
+                {uploadingImage === item.id ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Enviando...
+                  </>
+                ) : (
+                  <>
+                    <Camera className="w-4 h-4 mr-2" />
+                    Adicionar Foto
+                  </>
+                )}
               </Button>
             </CardContent>
           </Card>
         ))}
+      </div>
+
+      {/* Bottom Navigation */}
+      <div className="flex justify-between pt-4 pb-8">
+        <Button
+          variant="outline"
+          onClick={() => setCurrentSection(prev => Math.max(0, prev - 1))}
+          disabled={currentSection === 0}
+        >
+          <ArrowLeft className="w-4 h-4 mr-2" />
+          Seção Anterior
+        </Button>
+        {currentSection === sections.length - 1 ? (
+          <Button 
+            onClick={handleFinish} 
+            className="bg-gradient-primary"
+            disabled={saving}
+          >
+            {saving ? (
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            ) : (
+              <CheckCircle className="w-4 h-4 mr-2" />
+            )}
+            Finalizar Auditoria
+          </Button>
+        ) : (
+          <Button
+            onClick={() => setCurrentSection(prev => Math.min(sections.length - 1, prev + 1))}
+          >
+            Próxima Seção
+            <ArrowRight className="w-4 h-4 ml-2" />
+          </Button>
+        )}
       </div>
     </div>
   );
