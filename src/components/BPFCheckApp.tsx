@@ -1,77 +1,41 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { AppHeader } from "./layout/AppHeader";
-import { LoginForm } from "./auth/LoginForm";
+import { AuthPage } from "./auth/AuthPage";
 import { DashboardHome } from "./dashboard/DashboardHome";
 import { ChecklistForm } from "./checklist/ChecklistForm";
 import { SplashScreen } from "./splash/SplashScreen";
+import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
+import { useOfflineStorage } from "@/hooks/useOfflineStorage";
+import { WifiOff } from "lucide-react";
 
-type AppView = "splash" | "login" | "dashboard" | "checklist" | "reports" | "history";
-
-interface User {
-  name: string;
-  email: string;
-}
+type AppView = "splash" | "dashboard" | "checklist" | "reports" | "history";
 
 export const BPFCheckApp = () => {
   const [currentView, setCurrentView] = useState<AppView>("splash");
-  const [user, setUser] = useState<User | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [showSplash, setShowSplash] = useState(true);
+  const { user, loading, signOut } = useAuth();
   const { toast } = useToast();
+  const { isOnline, pendingSyncs } = useOfflineStorage();
 
+  // Handle splash screen completion
   const handleSplashComplete = () => {
-    setCurrentView("login");
+    setShowSplash(false);
+    if (user) {
+      setCurrentView("dashboard");
+    }
   };
 
-  const handleLogin = async (email: string, password: string) => {
-    setIsLoading(true);
-    
-    // Simulate API call
-    setTimeout(() => {
-      // Demo user authentication
-      if (email === "admin@bpf.com" && password === "123456") {
-        const userData = {
-          name: "Admin BPF",
-          email: email
-        };
-        setUser(userData);
-        setCurrentView("dashboard");
-        toast({
-          title: "Login realizado com sucesso!",
-          description: `Bem-vindo(a), ${userData.name}`,
-        });
-      } else {
-        toast({
-          title: "Erro no login",
-          description: "E-mail ou senha incorretos. Use: admin@bpf.com / 123456",
-          variant: "destructive",
-        });
-      }
-      setIsLoading(false);
-    }, 1500);
-  };
+  // Navigate to dashboard when user logs in
+  useEffect(() => {
+    if (!loading && user && !showSplash) {
+      setCurrentView("dashboard");
+    }
+  }, [user, loading, showSplash]);
 
-  const handleLogout = () => {
-    setUser(null);
-    setCurrentView("login");
-    toast({
-      title: "Logout realizado",
-      description: "Você foi desconectado do sistema.",
-    });
-  };
-
-  const handleForgotPassword = () => {
-    toast({
-      title: "Recuperação de senha",
-      description: "Funcionalidade ainda não implementada.",
-    });
-  };
-
-  const handleRegister = () => {
-    toast({
-      title: "Cadastro",
-      description: "Funcionalidade ainda não implementada.",
-    });
+  const handleLogout = async () => {
+    await signOut();
+    setCurrentView("dashboard");
   };
 
   const handleNewAudit = () => {
@@ -104,43 +68,67 @@ export const BPFCheckApp = () => {
     });
   };
 
+  // Show splash screen
+  if (showSplash) {
+    return <SplashScreen onComplete={handleSplashComplete} />;
+  }
+
+  // Show loading while checking auth
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-hero flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <div className="w-16 h-16 border-4 border-primary-foreground border-t-transparent rounded-full animate-spin mx-auto" />
+          <p className="text-primary-foreground">Carregando...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show auth page if not logged in
+  if (!user) {
+    return <AuthPage />;
+  }
+
+  // User profile info
+  const userProfile = {
+    name: user.user_metadata?.name || user.email?.split("@")[0] || "Usuário",
+    email: user.email || "",
+  };
+
   return (
     <div className="min-h-screen bg-background">
-      {currentView === "splash" && (
-        <SplashScreen onComplete={handleSplashComplete} />
+      {/* Offline indicator */}
+      {!isOnline && (
+        <div className="bg-warning text-warning-foreground px-4 py-2 flex items-center justify-center gap-2 text-sm">
+          <WifiOff className="w-4 h-4" />
+          <span>Modo offline</span>
+          {pendingSyncs.length > 0 && (
+            <span className="bg-warning-foreground/20 px-2 py-0.5 rounded-full text-xs">
+              {pendingSyncs.length} pendente{pendingSyncs.length > 1 ? 's' : ''}
+            </span>
+          )}
+        </div>
       )}
 
-      {currentView !== "login" && currentView !== "splash" && user && (
-        <AppHeader user={user} onLogout={handleLogout} />
-      )}
+      <AppHeader user={userProfile} onLogout={handleLogout} />
       
-      {currentView !== "splash" && (
-        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          {currentView === "login" && (
-            <LoginForm
-              onLogin={handleLogin}
-              onForgotPassword={handleForgotPassword}
-              onRegister={handleRegister}
-              isLoading={isLoading}
-            />
-          )}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {currentView === "dashboard" && (
+          <DashboardHome
+            onNewAudit={handleNewAudit}
+            onViewReports={handleViewReports}
+            onViewHistory={handleViewHistory}
+          />
+        )}
 
-          {currentView === "dashboard" && (
-            <DashboardHome
-              onNewAudit={handleNewAudit}
-              onViewReports={handleViewReports}
-              onViewHistory={handleViewHistory}
-            />
-          )}
-
-          {currentView === "checklist" && (
-            <ChecklistForm
-              onBack={handleBackToDashboard}
-              onSave={handleSaveChecklist}
-            />
-          )}
-        </main>
-      )}
+        {currentView === "checklist" && (
+          <ChecklistForm
+            onBack={handleBackToDashboard}
+            onSave={handleSaveChecklist}
+          />
+        )}
+      </main>
     </div>
   );
 };
