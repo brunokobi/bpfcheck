@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -8,13 +8,10 @@ import {
   FileText, 
   History, 
   CheckCircle, 
+  XCircle, 
   Clock,
-  TrendingUp,
-  Loader2
+  TrendingUp
 } from "lucide-react";
-import { useAudits, AuditWithDetails } from "@/hooks/useAudits";
-import { format } from "date-fns";
-import { ptBR } from "date-fns/locale";
 
 interface DashboardProps {
   onNewAudit: () => void;
@@ -23,30 +20,45 @@ interface DashboardProps {
 }
 
 export const DashboardHome = ({ onNewAudit, onViewReports, onViewHistory }: DashboardProps) => {
-  const { stats, audits, loading, fetchStats, fetchRecentAudits } = useAudits();
+  const [stats] = useState({
+    totalAudits: 42,
+    pendingAudits: 3,
+    completedAudits: 39,
+    complianceRate: 85
+  });
 
-  useEffect(() => {
-    fetchStats();
-    fetchRecentAudits(5);
-  }, [fetchStats, fetchRecentAudits]);
+  const recentAudits = [
+    {
+      id: 1,
+      name: "Restaurante Central",
+      date: "2024-03-15",
+      status: "completed",
+      compliance: 92
+    },
+    {
+      id: 2,
+      name: "Padaria São João",
+      date: "2024-03-14",
+      status: "pending",
+      compliance: null
+    },
+    {
+      id: 3,
+      name: "Lanchonete Moderna",
+      date: "2024-03-13",
+      status: "completed",
+      compliance: 78
+    }
+  ];
 
-  const getStatusBadge = (status: string | null) => {
+  const getStatusBadge = (status: string) => {
     switch (status) {
       case "completed":
         return <Badge variant="secondary" className="bg-success text-success-foreground">Concluída</Badge>;
-      case "in_progress":
-        return <Badge variant="outline" className="border-warning text-warning">Em andamento</Badge>;
+      case "pending":
+        return <Badge variant="outline" className="border-warning text-warning">Pendente</Badge>;
       default:
         return <Badge variant="outline">Desconhecido</Badge>;
-    }
-  };
-
-  const formatDate = (dateString: string | null) => {
-    if (!dateString) return '-';
-    try {
-      return format(new Date(dateString), 'dd/MM/yyyy', { locale: ptBR });
-    } catch {
-      return dateString;
     }
   };
 
@@ -72,24 +84,20 @@ export const DashboardHome = ({ onNewAudit, onViewReports, onViewHistory }: Dash
             <ClipboardCheck className="h-4 w-4 text-primary" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-primary">
-              {loading ? <Loader2 className="h-6 w-6 animate-spin" /> : stats.totalAudits}
-            </div>
+            <div className="text-2xl font-bold text-primary">{stats.totalAudits}</div>
             <p className="text-xs text-muted-foreground">
-              Todas as auditorias
+              +2 desde o mês passado
             </p>
           </CardContent>
         </Card>
 
         <Card className="shadow-card">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Em Andamento</CardTitle>
+            <CardTitle className="text-sm font-medium">Pendentes</CardTitle>
             <Clock className="h-4 w-4 text-warning" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-warning">
-              {loading ? <Loader2 className="h-6 w-6 animate-spin" /> : stats.pendingAudits}
-            </div>
+            <div className="text-2xl font-bold text-warning">{stats.pendingAudits}</div>
             <p className="text-xs text-muted-foreground">
               Aguardando conclusão
             </p>
@@ -102,11 +110,9 @@ export const DashboardHome = ({ onNewAudit, onViewReports, onViewHistory }: Dash
             <CheckCircle className="h-4 w-4 text-success" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-success">
-              {loading ? <Loader2 className="h-6 w-6 animate-spin" /> : stats.completedAudits}
-            </div>
+            <div className="text-2xl font-bold text-success">{stats.completedAudits}</div>
             <p className="text-xs text-muted-foreground">
-              Finalizadas
+              Este mês
             </p>
           </CardContent>
         </Card>
@@ -117,11 +123,9 @@ export const DashboardHome = ({ onNewAudit, onViewReports, onViewHistory }: Dash
             <TrendingUp className="h-4 w-4 text-primary" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-primary">
-              {loading ? <Loader2 className="h-6 w-6 animate-spin" /> : `${stats.complianceRate}%`}
-            </div>
+            <div className="text-2xl font-bold text-primary">{stats.complianceRate}%</div>
             <p className="text-xs text-muted-foreground">
-              Média geral
+              +5% desde o mês passado
             </p>
           </CardContent>
         </Card>
@@ -175,46 +179,30 @@ export const DashboardHome = ({ onNewAudit, onViewReports, onViewHistory }: Dash
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {loading ? (
-            <div className="flex justify-center py-8">
-              <Loader2 className="h-8 w-8 animate-spin text-primary" />
-            </div>
-          ) : audits.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              <ClipboardCheck className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p>Nenhuma auditoria encontrada.</p>
-              <p className="text-sm">Clique em "Nova Auditoria" para começar.</p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {audits.map((audit: AuditWithDetails) => (
-                <div key={audit.id} className="flex items-center justify-between p-4 border rounded-lg">
-                  <div className="flex items-center space-x-4">
-                    <div className="w-10 h-10 bg-gradient-secondary rounded-lg flex items-center justify-center">
-                      <ClipboardCheck className="w-5 h-5 text-primary" />
-                    </div>
-                    <div>
-                      <h4 className="font-medium">
-                        {audit.location_name || audit.location || 'Local não informado'}
-                      </h4>
-                      <p className="text-sm text-muted-foreground">
-                        {formatDate(audit.started_at)}
-                      </p>
-                    </div>
+          <div className="space-y-4">
+            {recentAudits.map((audit) => (
+              <div key={audit.id} className="flex items-center justify-between p-4 border rounded-lg">
+                <div className="flex items-center space-x-4">
+                  <div className="w-10 h-10 bg-gradient-secondary rounded-lg flex items-center justify-center">
+                    <ClipboardCheck className="w-5 h-5 text-primary" />
                   </div>
-                  <div className="flex items-center space-x-4">
-                    {audit.compliance !== undefined && (
-                      <div className="text-right">
-                        <p className="text-sm font-medium">{audit.compliance}%</p>
-                        <p className="text-xs text-muted-foreground">Conformidade</p>
-                      </div>
-                    )}
-                    {getStatusBadge(audit.status)}
+                  <div>
+                    <h4 className="font-medium">{audit.name}</h4>
+                    <p className="text-sm text-muted-foreground">{audit.date}</p>
                   </div>
                 </div>
-              ))}
-            </div>
-          )}
+                <div className="flex items-center space-x-4">
+                  {audit.compliance && (
+                    <div className="text-right">
+                      <p className="text-sm font-medium">{audit.compliance}%</p>
+                      <p className="text-xs text-muted-foreground">Conformidade</p>
+                    </div>
+                  )}
+                  {getStatusBadge(audit.status)}
+                </div>
+              </div>
+            ))}
+          </div>
         </CardContent>
       </Card>
     </div>
