@@ -85,12 +85,83 @@ export type Database = {
           },
         ]
       }
+      audit_locations: {
+        Row: {
+          address: string | null
+          city: string | null
+          created_at: string | null
+          id: string
+          name: string
+          state: string | null
+          user_id: string
+        }
+        Insert: {
+          address?: string | null
+          city?: string | null
+          created_at?: string | null
+          id?: string
+          name: string
+          state?: string | null
+          user_id: string
+        }
+        Update: {
+          address?: string | null
+          city?: string | null
+          created_at?: string | null
+          id?: string
+          name?: string
+          state?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "audit_locations_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      audit_summary: {
+        Row: {
+          audit_id: string
+          conforme_count: number | null
+          last_updated: string | null
+          nao_aplicavel_count: number | null
+          nao_conforme_count: number | null
+        }
+        Insert: {
+          audit_id: string
+          conforme_count?: number | null
+          last_updated?: string | null
+          nao_aplicavel_count?: number | null
+          nao_conforme_count?: number | null
+        }
+        Update: {
+          audit_id?: string
+          conforme_count?: number | null
+          last_updated?: string | null
+          nao_aplicavel_count?: number | null
+          nao_conforme_count?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "audit_summary_audit_id_fkey"
+            columns: ["audit_id"]
+            isOneToOne: true
+            referencedRelation: "audits"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       audits: {
         Row: {
           checklist_id: string
           finished_at: string | null
           id: string
           location: string | null
+          location_id: string | null
           started_at: string | null
           status: string | null
           user_id: string
@@ -100,6 +171,7 @@ export type Database = {
           finished_at?: string | null
           id?: string
           location?: string | null
+          location_id?: string | null
           started_at?: string | null
           status?: string | null
           user_id: string
@@ -109,6 +181,7 @@ export type Database = {
           finished_at?: string | null
           id?: string
           location?: string | null
+          location_id?: string | null
           started_at?: string | null
           status?: string | null
           user_id?: string
@@ -119,6 +192,13 @@ export type Database = {
             columns: ["checklist_id"]
             isOneToOne: false
             referencedRelation: "checklists"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "audits_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "audit_locations"
             referencedColumns: ["id"]
           },
           {
