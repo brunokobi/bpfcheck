@@ -20,11 +20,9 @@ interface DashboardProps {
   onNewAudit: () => void;
   onViewReports: () => void;
   onViewHistory: () => void;
-  onAuditClick?: (auditId: string, status: string | null) => void;
-  isAdmin?: boolean;
 }
 
-export const DashboardHome = ({ onNewAudit, onViewReports, onViewHistory, onAuditClick, isAdmin = false }: DashboardProps) => {
+export const DashboardHome = ({ onNewAudit, onViewReports, onViewHistory }: DashboardProps) => {
   const { stats, audits, loading, fetchStats, fetchRecentAudits } = useAudits();
 
   useEffect(() => {
@@ -190,11 +188,7 @@ export const DashboardHome = ({ onNewAudit, onViewReports, onViewHistory, onAudi
           ) : (
             <div className="space-y-4">
               {audits.map((audit: AuditWithDetails) => (
-                <div 
-                  key={audit.id} 
-                  className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors cursor-pointer"
-                  onClick={() => onAuditClick?.(audit.id, audit.status)}
-                >
+                <div key={audit.id} className="flex items-center justify-between p-4 border rounded-lg">
                   <div className="flex items-center space-x-4">
                     <div className="w-10 h-10 bg-gradient-secondary rounded-lg flex items-center justify-center">
                       <ClipboardCheck className="w-5 h-5 text-primary" />

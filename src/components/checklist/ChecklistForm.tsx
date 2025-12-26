@@ -120,8 +120,9 @@ export const ChecklistForm = ({ onBack, onSave }: ChecklistFormProps) => {
     setUploadingImage(activeItemId);
     
     try {
-      // Upload image with audit context
-      const { data: imageUrl, error } = await uploadAuditImage(file, currentAudit.id, activeItemId);
+      // First we need to ensure the audit_item exists in the database
+      // For now, we'll store the image URL locally and save it when the audit is saved
+      const { data: imageUrl, error } = await uploadAuditImage(file, activeItemId);
       
       if (error) {
         toast({

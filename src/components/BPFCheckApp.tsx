@@ -4,26 +4,17 @@ import { AuthPage } from "./auth/AuthPage";
 import { DashboardHome } from "./dashboard/DashboardHome";
 import { ChecklistForm } from "./checklist/ChecklistForm";
 import { SplashScreen } from "./splash/SplashScreen";
-import { AuditHistoryPage } from "./history/AuditHistoryPage";
-import { AuditReportPage } from "./reports/AuditReportPage";
 import { useAuth } from "@/hooks/useAuth";
-import { useUserRole } from "@/hooks/useUserRole";
-import { useAudits } from "@/hooks/useAudits";
 import { useToast } from "@/hooks/use-toast";
 import { useOfflineStorage } from "@/hooks/useOfflineStorage";
-import { WifiOff, Shield } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { WifiOff } from "lucide-react";
 
-type AppView = "splash" | "dashboard" | "checklist" | "reports" | "history" | "report-view";
+type AppView = "splash" | "dashboard" | "checklist" | "reports" | "history";
 
 export const BPFCheckApp = () => {
   const [currentView, setCurrentView] = useState<AppView>("splash");
   const [showSplash, setShowSplash] = useState(true);
-  const [selectedAuditId, setSelectedAuditId] = useState<string | null>(null);
-  
   const { user, loading, signOut } = useAuth();
-  const { isAdmin, loading: roleLoading } = useUserRole();
-  const { loadAudit, setCurrentAudit } = useAudits();
   const { toast } = useToast();
   const { isOnline, pendingSyncs } = useOfflineStorage();
 
@@ -48,55 +39,33 @@ export const BPFCheckApp = () => {
   };
 
   const handleNewAudit = () => {
-    setCurrentAudit(null);
     setCurrentView("checklist");
   };
 
   const handleViewReports = () => {
-    setCurrentView("history");
+    toast({
+      title: "Relatórios",
+      description: "Funcionalidade em desenvolvimento.",
+    });
   };
 
   const handleViewHistory = () => {
-    setCurrentView("history");
+    toast({
+      title: "Histórico",
+      description: "Funcionalidade em desenvolvimento.",
+    });
   };
 
   const handleBackToDashboard = () => {
     setCurrentView("dashboard");
-    setSelectedAuditId(null);
   };
 
   const handleSaveChecklist = () => {
     setCurrentView("dashboard");
     toast({
-      title: "Auditoria salva",
-      description: "Auditoria finalizada com sucesso!",
+      title: "Checklist salvo",
+      description: "Auditoria salva com sucesso!",
     });
-  };
-
-  const handleEditAudit = async (auditId: string) => {
-    const success = await loadAudit(auditId);
-    if (success) {
-      setCurrentView("checklist");
-    } else {
-      toast({
-        title: "Erro",
-        description: "Não foi possível carregar a auditoria.",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const handleViewReport = (auditId: string) => {
-    setSelectedAuditId(auditId);
-    setCurrentView("report-view");
-  };
-
-  const handleAuditClick = async (auditId: string, status: string | null) => {
-    if (status === 'completed') {
-      handleViewReport(auditId);
-    } else {
-      handleEditAudit(auditId);
-    }
   };
 
   // Show splash screen
@@ -105,7 +74,7 @@ export const BPFCheckApp = () => {
   }
 
   // Show loading while checking auth
-  if (loading || roleLoading) {
+  if (loading) {
     return (
       <div className="min-h-screen bg-gradient-hero flex items-center justify-center">
         <div className="text-center space-y-4">
@@ -142,14 +111,6 @@ export const BPFCheckApp = () => {
         </div>
       )}
 
-      {/* Admin indicator */}
-      {isAdmin && (
-        <div className="bg-primary text-primary-foreground px-4 py-1 flex items-center justify-center gap-2 text-sm">
-          <Shield className="w-4 h-4" />
-          <span>Modo Administrador - Visualizando dados globais</span>
-        </div>
-      )}
-
       <AppHeader user={userProfile} onLogout={handleLogout} />
       
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -158,8 +119,6 @@ export const BPFCheckApp = () => {
             onNewAudit={handleNewAudit}
             onViewReports={handleViewReports}
             onViewHistory={handleViewHistory}
-            onAuditClick={handleAuditClick}
-            isAdmin={isAdmin}
           />
         )}
 
@@ -167,22 +126,6 @@ export const BPFCheckApp = () => {
           <ChecklistForm
             onBack={handleBackToDashboard}
             onSave={handleSaveChecklist}
-          />
-        )}
-
-        {currentView === "history" && (
-          <AuditHistoryPage
-            onBack={handleBackToDashboard}
-            onViewReport={handleViewReport}
-            onEditAudit={handleEditAudit}
-            isAdmin={isAdmin}
-          />
-        )}
-
-        {currentView === "report-view" && selectedAuditId && (
-          <AuditReportPage
-            auditId={selectedAuditId}
-            onBack={() => setCurrentView("history")}
           />
         )}
       </main>

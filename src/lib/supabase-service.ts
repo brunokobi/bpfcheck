@@ -421,57 +421,33 @@ export const createAuditLocation = async (location: Omit<AuditLocation, 'id' | '
 
 // ============ IMAGES ============
 
-export const uploadAuditImage = async (
-  file: File, 
-  auditId: string, 
-  checklistItemId: string
-): Promise<SupabaseResult<string>> => {
+export const uploadAuditImage = async (file: File, auditItemId: string): Promise<SupabaseResult<string>> => {
   try {
-    const userId = await requireAuth();
+    await requireAuth();
     
     const fileExt = file.name.split('.').pop();
-    // Use user folder structure for RLS: userId/auditId/timestamp.ext
-    const fileName = `${userId}/${auditId}/${Date.now()}.${fileExt}`;
+    const fileName = `${auditItemId}/${Date.now()}.${fileExt}`;
 
     console.log('[Supabase] Uploading image:', fileName);
 
     const { data: uploadData, error: uploadError } = await supabase.storage
       .from('audit-images')
-      .upload(fileName, file, {
-        cacheControl: '3600',
-        upsert: false,
-      });
+      .upload(fileName, file);
 
     if (uploadError) {
       console.error('[Storage Error] Failed to upload image:', uploadError);
       throw uploadError;
     }
 
-    // Get the public URL
     const { data: { publicUrl } } = supabase.storage
       .from('audit-images')
       .getPublicUrl(uploadData.path);
-
-    // First, ensure the audit_item exists (upsert)
-    const { data: auditItem, error: itemError } = await supabase
-      .from('audit_items')
-      .upsert({
-        audit_id: auditId,
-        checklist_item_id: checklistItemId,
-      }, { onConflict: 'audit_id,checklist_item_id' })
-      .select()
-      .single();
-
-    if (itemError) {
-      console.error('[RLS Error] Failed to upsert audit item:', itemError);
-      throw itemError;
-    }
 
     // Save image reference to database
     const { error: dbError } = await supabase
       .from('audit_item_images')
       .insert({
-        audit_item_id: auditItem.id,
+        audit_item_id: auditItemId,
         image_url: publicUrl,
       });
 
@@ -505,7 +481,7 @@ export const getAuditItemImages = async (auditItemId: string): Promise<SupabaseR
 
 // ============ STATS ============
 
-export const getDashboardStats = async (isAdmin = false): Promise<SupabaseResult<{
+export const getDashboardStats = async (): Promise<SupabaseResult<{
   totalAudits: number;
   pendingAudits: number;
   completedAudits: number;
@@ -514,13 +490,11 @@ export const getDashboardStats = async (isAdmin = false): Promise<SupabaseResult
   try {
     const userId = await requireAuth();
     
-    // Get audits based on role
-    let query = supabase.from('audits').select('id, status');
-    if (!isAdmin) {
-      query = query.eq('user_id', userId);
-    }
-    
-    const { data: audits, error } = await query;
+    // Get all audits for the user
+    const { data: audits, error } = await supabase
+      .from('audits')
+      .select('id, status')
+      .eq('user_id', userId);
 
     if (error) throw error;
 
@@ -563,27 +537,22 @@ export const getDashboardStats = async (isAdmin = false): Promise<SupabaseResult
   }
 };
 
-export const getRecentAudits = async (limit = 5, isAdmin = false): Promise<SupabaseResult<(Audit & { 
+export const getRecentAudits = async (limit = 5): Promise<SupabaseResult<(Audit & { 
   compliance?: number;
   location_name?: string;
 })[]>> => {
   try {
     const userId = await requireAuth();
     
-    let query = supabase
+    const { data: audits, error } = await supabase
       .from('audits')
       .select(`
         *,
         audit_locations(name)
       `)
+      .eq('user_id', userId)
       .order('started_at', { ascending: false })
       .limit(limit);
-    
-    if (!isAdmin) {
-      query = query.eq('user_id', userId);
-    }
-    
-    const { data: audits, error } = await query;
 
     if (error) throw error;
 
@@ -615,23 +584,5 @@ export const getRecentAudits = async (limit = 5, isAdmin = false): Promise<Supab
     return { data: auditsWithCompliance, error: null };
   } catch (error) {
     return { data: null, error: handleError(error, 'getRecentAudits') };
-  }
-};
-
-// Get audit by ID (for admins too)
-export const getAuditByIdAdmin = async (auditId: string): Promise<SupabaseResult<Audit>> => {
-  try {
-    await requireAuth();
-    
-    const { data, error } = await supabase
-      .from('audits')
-      .select('*')
-      .eq('id', auditId)
-      .single();
-
-    if (error) throw error;
-    return { data, error: null };
-  } catch (error) {
-    return { data: null, error: handleError(error, 'getAuditByIdAdmin') };
   }
 };
