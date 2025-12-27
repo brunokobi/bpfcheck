@@ -17,15 +17,28 @@ import {
   Image as ImageIcon
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { useAudits, SectionWithItems, ChecklistItemWithResult } from "@/hooks/useAudits";
+import { SectionWithItems, ChecklistItemWithResult } from "@/hooks/useAudits";
 import { uploadAuditImage } from "@/lib/supabase-service";
+
+// Define the type for auditsHook
+type AuditsHook = {
+  currentAudit: any;
+  checklistSections: SectionWithItems[];
+  setChecklistSections: React.Dispatch<React.SetStateAction<SectionWithItems[]>>;
+  startNewAudit: (locationName?: string, locationId?: string) => Promise<any>;
+  saveItems: (auditId: string, items: { checklist_item_id: string; result: string | null; observation: string | null }[]) => Promise<boolean>;
+  finishAudit: (auditId: string, summary: { conforme_count: number; nao_conforme_count: number; nao_aplicavel_count: number }) => Promise<boolean>;
+  loading: boolean;
+};
 
 interface ChecklistFormProps {
   onBack: () => void;
   onSave: () => void;
+  auditsHook: AuditsHook;
+  isEditing?: boolean;
 }
 
-export const ChecklistForm = ({ onBack, onSave }: ChecklistFormProps) => {
+export const ChecklistForm = ({ onBack, onSave, auditsHook, isEditing = false }: ChecklistFormProps) => {
   const { toast } = useToast();
   const {
     currentAudit,
@@ -35,22 +48,24 @@ export const ChecklistForm = ({ onBack, onSave }: ChecklistFormProps) => {
     saveItems,
     finishAudit,
     loading,
-  } = useAudits();
+  } = auditsHook;
 
   const [currentSection, setCurrentSection] = useState(0);
   const [saving, setSaving] = useState(false);
   const [locationName, setLocationName] = useState("");
-  const [isStartingAudit, setIsStartingAudit] = useState(!currentAudit);
+  const [isStartingAudit, setIsStartingAudit] = useState(!isEditing && !currentAudit);
   const [uploadingImage, setUploadingImage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [activeItemId, setActiveItemId] = useState<string | null>(null);
 
-  // Initialize audit if needed
+  // Update isStartingAudit when isEditing or currentAudit changes
   useEffect(() => {
-    if (!currentAudit && !isStartingAudit) {
+    if (isEditing && currentAudit) {
+      setIsStartingAudit(false);
+    } else if (!currentAudit) {
       setIsStartingAudit(true);
     }
-  }, [currentAudit, isStartingAudit]);
+  }, [isEditing, currentAudit]);
 
   const handleStartAudit = async () => {
     if (!locationName.trim()) {
