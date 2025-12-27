@@ -6,6 +6,7 @@ import { ChecklistForm } from "./checklist/ChecklistForm";
 import { SplashScreen } from "./splash/SplashScreen";
 import { AuditHistoryPage } from "./history/AuditHistoryPage";
 import { AuditReportPage } from "./reports/AuditReportPage";
+import { AuditReportsPage } from "./reports/AuditReportsPage";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserRole } from "@/hooks/useUserRole";
 import { useAudits } from "@/hooks/useAudits";
@@ -13,18 +14,19 @@ import { useToast } from "@/hooks/use-toast";
 import { useOfflineStorage } from "@/hooks/useOfflineStorage";
 import { WifiOff, Shield } from "lucide-react";
 
-type AppView = "splash" | "dashboard" | "checklist" | "history" | "report-view";
+type AppView = "splash" | "dashboard" | "checklist" | "history" | "reports" | "report-view";
 
 export const BPFCheckApp = () => {
   const [currentView, setCurrentView] = useState<AppView>("splash");
   const [showSplash, setShowSplash] = useState(true);
   const [selectedAuditId, setSelectedAuditId] = useState<string | null>(null);
   const [isEditingAudit, setIsEditingAudit] = useState(false);
-  
+  const [reportBackView, setReportBackView] = useState<AppView>("dashboard");
+
   const { user, loading, signOut } = useAuth();
   const { isAdmin, loading: roleLoading } = useUserRole();
   const auditsHook = useAudits();
-  const { loadAudit, setCurrentAudit, currentAudit } = auditsHook;
+  const { loadAudit, setCurrentAudit } = auditsHook;
   const { toast } = useToast();
   const { isOnline, pendingSyncs } = useOfflineStorage();
 
@@ -50,11 +52,21 @@ export const BPFCheckApp = () => {
 
   const handleNewAudit = () => {
     setCurrentAudit(null);
+    setSelectedAuditId(null);
     setIsEditingAudit(false);
+    setReportBackView("dashboard");
     setCurrentView("checklist");
   };
 
+  const handleViewReports = () => {
+    setSelectedAuditId(null);
+    setReportBackView("reports");
+    setCurrentView("reports");
+  };
+
   const handleViewHistory = () => {
+    setSelectedAuditId(null);
+    setReportBackView("history");
     setCurrentView("history");
   };
 
@@ -62,6 +74,7 @@ export const BPFCheckApp = () => {
     setCurrentView("dashboard");
     setSelectedAuditId(null);
     setIsEditingAudit(false);
+    setReportBackView("dashboard");
   };
 
   const handleSaveChecklist = () => {
@@ -76,6 +89,7 @@ export const BPFCheckApp = () => {
   const handleEditAudit = async (auditId: string) => {
     const success = await loadAudit(auditId);
     if (success) {
+      setSelectedAuditId(null);
       setIsEditingAudit(true);
       setCurrentView("checklist");
     } else {
@@ -87,14 +101,16 @@ export const BPFCheckApp = () => {
     }
   };
 
-  const handleViewReport = (auditId: string) => {
+  const handleViewReport = (auditId: string, backView: AppView = "history") => {
     setSelectedAuditId(auditId);
+    setIsEditingAudit(false);
+    setReportBackView(backView);
     setCurrentView("report-view");
   };
 
   const handleAuditClick = async (auditId: string, status: string | null) => {
-    if (status === 'completed') {
-      handleViewReport(auditId);
+    if (status === "completed") {
+      handleViewReport(auditId, "dashboard");
     } else {
       handleEditAudit(auditId);
     }
@@ -157,7 +173,7 @@ export const BPFCheckApp = () => {
         {currentView === "dashboard" && (
           <DashboardHome
             onNewAudit={handleNewAudit}
-            onViewReports={handleViewHistory}
+            onViewReports={handleViewReports}
             onViewHistory={handleViewHistory}
             onAuditClick={handleAuditClick}
             isAdmin={isAdmin}
@@ -173,20 +189,25 @@ export const BPFCheckApp = () => {
           />
         )}
 
+        {currentView === "reports" && (
+          <AuditReportsPage
+            onBack={handleBackToDashboard}
+            onPrintAudit={(auditId) => handleViewReport(auditId, "reports")}
+            isAdmin={isAdmin}
+          />
+        )}
+
         {currentView === "history" && (
           <AuditHistoryPage
             onBack={handleBackToDashboard}
-            onViewReport={handleViewReport}
+            onViewReport={(auditId) => handleViewReport(auditId, "history")}
             onEditAudit={handleEditAudit}
             isAdmin={isAdmin}
           />
         )}
 
         {currentView === "report-view" && selectedAuditId && (
-          <AuditReportPage
-            auditId={selectedAuditId}
-            onBack={() => setCurrentView("history")}
-          />
+          <AuditReportPage auditId={selectedAuditId} onBack={() => setCurrentView(reportBackView)} />
         )}
       </main>
     </div>
