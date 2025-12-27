@@ -12,18 +12,19 @@ import { useAudits } from "@/hooks/useAudits";
 import { useToast } from "@/hooks/use-toast";
 import { useOfflineStorage } from "@/hooks/useOfflineStorage";
 import { WifiOff, Shield } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 
-type AppView = "splash" | "dashboard" | "checklist" | "reports" | "history" | "report-view";
+type AppView = "splash" | "dashboard" | "checklist" | "history" | "report-view";
 
 export const BPFCheckApp = () => {
   const [currentView, setCurrentView] = useState<AppView>("splash");
   const [showSplash, setShowSplash] = useState(true);
   const [selectedAuditId, setSelectedAuditId] = useState<string | null>(null);
+  const [isEditingAudit, setIsEditingAudit] = useState(false);
   
   const { user, loading, signOut } = useAuth();
   const { isAdmin, loading: roleLoading } = useUserRole();
-  const { loadAudit, setCurrentAudit } = useAudits();
+  const auditsHook = useAudits();
+  const { loadAudit, setCurrentAudit, currentAudit } = auditsHook;
   const { toast } = useToast();
   const { isOnline, pendingSyncs } = useOfflineStorage();
 
@@ -49,11 +50,8 @@ export const BPFCheckApp = () => {
 
   const handleNewAudit = () => {
     setCurrentAudit(null);
+    setIsEditingAudit(false);
     setCurrentView("checklist");
-  };
-
-  const handleViewReports = () => {
-    setCurrentView("history");
   };
 
   const handleViewHistory = () => {
@@ -63,10 +61,12 @@ export const BPFCheckApp = () => {
   const handleBackToDashboard = () => {
     setCurrentView("dashboard");
     setSelectedAuditId(null);
+    setIsEditingAudit(false);
   };
 
   const handleSaveChecklist = () => {
     setCurrentView("dashboard");
+    setIsEditingAudit(false);
     toast({
       title: "Auditoria salva",
       description: "Auditoria finalizada com sucesso!",
@@ -76,6 +76,7 @@ export const BPFCheckApp = () => {
   const handleEditAudit = async (auditId: string) => {
     const success = await loadAudit(auditId);
     if (success) {
+      setIsEditingAudit(true);
       setCurrentView("checklist");
     } else {
       toast({
@@ -156,7 +157,7 @@ export const BPFCheckApp = () => {
         {currentView === "dashboard" && (
           <DashboardHome
             onNewAudit={handleNewAudit}
-            onViewReports={handleViewReports}
+            onViewReports={handleViewHistory}
             onViewHistory={handleViewHistory}
             onAuditClick={handleAuditClick}
             isAdmin={isAdmin}
@@ -167,6 +168,8 @@ export const BPFCheckApp = () => {
           <ChecklistForm
             onBack={handleBackToDashboard}
             onSave={handleSaveChecklist}
+            auditsHook={auditsHook}
+            isEditing={isEditingAudit}
           />
         )}
 
