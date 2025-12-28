@@ -53,19 +53,13 @@ export const ChecklistForm = ({ onBack, onSave, auditsHook, isEditing = false }:
   const [currentSection, setCurrentSection] = useState(0);
   const [saving, setSaving] = useState(false);
   const [locationName, setLocationName] = useState("");
-  const [isStartingAudit, setIsStartingAudit] = useState(!isEditing && !currentAudit);
   const [uploadingImage, setUploadingImage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [activeItemId, setActiveItemId] = useState<string | null>(null);
 
-  // Update isStartingAudit when isEditing or currentAudit changes
-  useEffect(() => {
-    if (isEditing && currentAudit) {
-      setIsStartingAudit(false);
-    } else if (!currentAudit) {
-      setIsStartingAudit(true);
-    }
-  }, [isEditing, currentAudit]);
+  // Determine if we need to show the "start audit" form
+  // Show form when: not editing AND no current audit loaded
+  const showStartForm = !isEditing && !currentAudit;
 
   const handleStartAudit = async () => {
     if (!locationName.trim()) {
@@ -81,9 +75,8 @@ export const ChecklistForm = ({ onBack, onSave, auditsHook, isEditing = false }:
     const audit = await startNewAudit(locationName.trim());
     setSaving(false);
 
-    if (audit) {
-      setIsStartingAudit(false);
-    }
+    // After starting, the currentAudit will be set in auditsHook
+    // so showStartForm will automatically become false
   };
 
   const sections = checklistSections;
@@ -256,7 +249,7 @@ export const ChecklistForm = ({ onBack, onSave, auditsHook, isEditing = false }:
   };
 
   // Show audit start form
-  if (isStartingAudit || !currentAudit) {
+  if (showStartForm) {
     return (
       <div className="space-y-6 animate-fade-in">
         <div className="flex items-center space-x-4">
