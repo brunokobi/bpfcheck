@@ -27,7 +27,7 @@ type AuditsHook = {
   setChecklistSections: React.Dispatch<React.SetStateAction<SectionWithItems[]>>;
   startNewAudit: (locationName?: string, locationId?: string) => Promise<any>;
   saveItems: (auditId: string, items: { checklist_item_id: string; result: string | null; observation: string | null }[]) => Promise<boolean>;
-  finishAudit: (auditId: string, summary: { conforme_count: number; nao_conforme_count: number; nao_aplicavel_count: number }) => Promise<boolean>;
+  finishAudit: (auditId: string, summary: { conforme_count: number; nao_conforme_count: number; nao_aplicavel_count: number }, items?: { checklist_item_id: string; result: string | null; observation: string | null }[]) => Promise<boolean>;
   loading: boolean;
 };
 
@@ -200,20 +200,10 @@ export const ChecklistForm = ({ onBack, onSave, auditsHook, isEditing = false }:
     if (!currentAudit) return;
 
     const summary = calculateSummary();
-    const progress = calculateProgress();
-
-    if (progress < 100) {
-      toast({
-        title: "Checklist incompleto",
-        description: `Você completou apenas ${Math.round(progress)}% do checklist. Deseja finalizar mesmo assim?`,
-        variant: "destructive",
-      });
-      // In a real app, you'd show a confirmation dialog here
-    }
 
     setSaving(true);
 
-    // Save all items first
+    // Prepare all items to save
     const allItems = sections.flatMap(s => s.items);
     const itemsToSave = allItems
       .filter(item => item.result !== null)
@@ -223,13 +213,11 @@ export const ChecklistForm = ({ onBack, onSave, auditsHook, isEditing = false }:
         observation: item.observation || null,
       }));
 
-    const itemsSaved = await saveItems(currentAudit.id, itemsToSave);
+    // Use transactional finalize that saves items + summary + marks completed atomically
+    const success = await finishAudit(currentAudit.id, summary, itemsToSave);
     
-    if (itemsSaved) {
-      const success = await finishAudit(currentAudit.id, summary);
-      if (success) {
-        onSave();
-      }
+    if (success) {
+      onSave();
     }
 
     setSaving(false);
