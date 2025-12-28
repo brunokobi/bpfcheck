@@ -367,6 +367,17 @@ export type Database = {
         }
         Returns: boolean
       }
+      save_audit_transaction: {
+        Args: {
+          p_audit_id?: string
+          p_checklist_id?: string
+          p_finalize?: boolean
+          p_items?: Json
+          p_location?: string
+          p_location_id?: string
+        }
+        Returns: string
+      }
     }
     Enums: {
       app_role: "admin" | "user"

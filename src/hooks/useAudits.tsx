@@ -14,6 +14,7 @@ import {
   completeAudit,
   getAuditItems,
   saveAuditItems,
+  saveAuditTransaction,
   getDefaultChecklist,
   getChecklistWithSections,
   getDashboardStats,
@@ -190,7 +191,7 @@ export const useAudits = () => {
     return [];
   }, [toast]);
 
-  // Start new audit
+  // Start new audit using transactional RPC
   const startNewAudit = useCallback(async (locationName?: string, locationId?: string): Promise<Audit | null> => {
     setLoading(true);
 
@@ -210,29 +211,46 @@ export const useAudits = () => {
       return null;
     }
 
-    // Create audit
     if (isOnline) {
-      const { data, error } = await createAudit(checklist.id, locationName, locationId);
-      setLoading(false);
+      // Use transactional RPC to create audit + location atomically
+      const { data: auditId, error } = await saveAuditTransaction({
+        checklistId: checklist.id,
+        location: locationName || null,
+        locationId: locationId || null,
+        items: [],
+        finalize: false,
+      });
 
-      if (error) {
+      if (error || !auditId) {
+        setLoading(false);
         toast({
           title: 'Erro ao criar auditoria',
-          description: error,
+          description: error || 'Falha ao criar auditoria',
           variant: 'destructive',
         });
         return null;
       }
 
-      if (data) {
-        setCurrentAudit(data);
-        await loadChecklistWithItems(checklist.id);
+      // Fetch the created audit
+      const { data: audit, error: fetchError } = await getAuditById(auditId);
+      setLoading(false);
+
+      if (fetchError || !audit) {
         toast({
-          title: 'Auditoria iniciada',
-          description: 'Nova auditoria criada com sucesso.',
+          title: 'Erro ao carregar auditoria',
+          description: fetchError || 'Auditoria não encontrada',
+          variant: 'destructive',
         });
-        return data;
+        return null;
       }
+
+      setCurrentAudit(audit);
+      await loadChecklistWithItems(checklist.id);
+      toast({
+        title: 'Auditoria iniciada',
+        description: 'Nova auditoria criada com sucesso.',
+      });
+      return audit;
     } else {
       // Offline mode - create local audit
       const offlineAudit: Record<string, unknown> = {
@@ -259,9 +277,6 @@ export const useAudits = () => {
       
       return offlineAudit as unknown as Audit;
     }
-
-    setLoading(false);
-    return null;
   }, [defaultChecklist, loadDefaultChecklist, loadChecklistWithItems, isOnline, saveOfflineAudit, saveForSync, toast]);
 
   // Save audit items
@@ -297,10 +312,11 @@ export const useAudits = () => {
     return true;
   }, [isOnline, saveForSync, toast]);
 
-  // Complete audit with summary
+  // Complete audit with summary using transactional RPC
   const finishAudit = useCallback(async (
     auditId: string,
-    summary: { conforme_count: number; nao_conforme_count: number; nao_aplicavel_count: number }
+    summary: { conforme_count: number; nao_conforme_count: number; nao_aplicavel_count: number },
+    items: { checklist_item_id: string; result: string | null; observation: string | null }[] = []
   ): Promise<boolean> => {
     if (!isOnline) {
       await saveForSync('audits', 'update', {
@@ -319,25 +335,31 @@ export const useAudits = () => {
       return true;
     }
 
-    // Update summary
-    const { error: summaryError } = await updateAuditSummary(auditId, summary);
-    if (summaryError) {
-      toast({
-        title: 'Erro ao salvar resumo',
-        description: summaryError,
-        variant: 'destructive',
-      });
-      return false;
-    }
+    // Use transactional RPC that saves items + summary + marks completed atomically
+    const { data, error } = await saveAuditTransaction({
+      auditId,
+      items,
+      finalize: true,
+    });
 
-    // Complete audit
-    const { error } = await completeAudit(auditId);
     if (error) {
-      toast({
-        title: 'Erro ao finalizar auditoria',
-        description: error,
-        variant: 'destructive',
-      });
+      // Parse special error messages
+      if (error.includes('checklist_incomplete')) {
+        const match = error.match(/checklist_incomplete:(\d+)\/(\d+)/);
+        const answered = match ? match[1] : '?';
+        const total = match ? match[2] : '?';
+        toast({
+          title: 'Checklist incompleto',
+          description: `Responda todos os itens antes de finalizar (${answered}/${total} respondidos).`,
+          variant: 'destructive',
+        });
+      } else {
+        toast({
+          title: 'Erro ao finalizar auditoria',
+          description: error,
+          variant: 'destructive',
+        });
+      }
       return false;
     }
 

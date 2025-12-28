@@ -303,28 +303,68 @@ export const upsertAuditItem = async (item: AuditItemInsert): Promise<SupabaseRe
 export const saveAuditItems = async (auditId: string, items: Omit<AuditItemInsert, 'audit_id'>[]): Promise<SupabaseResult<AuditItem[]>> => {
   try {
     await requireAuth();
-    
-    const itemsWithAuditId = items.map(item => ({
-      ...item,
-      audit_id: auditId,
-    }));
 
-    console.log('[Supabase] Saving audit items batch:', itemsWithAuditId.length, 'items');
+    console.log('[Supabase] Saving audit items via transaction:', items.length, 'items');
 
-    const { data, error } = await supabase
-      .from('audit_items')
-      .upsert(itemsWithAuditId, { onConflict: 'audit_id,checklist_item_id' })
-      .select();
+    const { data, error } = await supabase.rpc('save_audit_transaction', {
+      p_audit_id: auditId,
+      p_items: items.map(item => ({
+        checklist_item_id: item.checklist_item_id,
+        result: item.result || null,
+        observation: item.observation || null,
+      })),
+      p_finalize: false,
+    });
 
     if (error) {
       console.error('[RLS Error] Failed to save audit items:', error);
       throw error;
     }
 
-    console.log('[Supabase] Audit items saved successfully:', data?.length);
-    return { data: data || [], error: null };
+    console.log('[Supabase] Audit items saved successfully via transaction');
+    // Return empty array since the RPC doesn't return items
+    return { data: [], error: null };
   } catch (error) {
     return { data: null, error: handleError(error, 'saveAuditItems') };
+  }
+};
+
+// Transactional save for audit with optional finalize
+export const saveAuditTransaction = async (params: {
+  auditId?: string | null;
+  checklistId?: string | null;
+  location?: string | null;
+  locationId?: string | null;
+  items?: { checklist_item_id: string; result: string | null; observation: string | null }[];
+  finalize?: boolean;
+}): Promise<SupabaseResult<string>> => {
+  try {
+    await requireAuth();
+
+    console.log('[Supabase] Executing save_audit_transaction:', {
+      auditId: params.auditId,
+      itemCount: params.items?.length || 0,
+      finalize: params.finalize,
+    });
+
+    const { data, error } = await supabase.rpc('save_audit_transaction', {
+      p_audit_id: params.auditId || null,
+      p_checklist_id: params.checklistId || null,
+      p_location: params.location || null,
+      p_location_id: params.locationId || null,
+      p_items: params.items || [],
+      p_finalize: params.finalize || false,
+    });
+
+    if (error) {
+      console.error('[RLS Error] save_audit_transaction failed:', error);
+      throw error;
+    }
+
+    console.log('[Supabase] save_audit_transaction completed, audit_id:', data);
+    return { data: data as string, error: null };
+  } catch (error) {
+    return { data: null, error: handleError(error, 'saveAuditTransaction') };
   }
 };
 
@@ -430,7 +470,6 @@ export const uploadAuditImage = async (
     const userId = await requireAuth();
     
     const fileExt = file.name.split('.').pop();
-    // Use user folder structure for RLS: userId/auditId/timestamp.ext
     const fileName = `${userId}/${auditId}/${Date.now()}.${fileExt}`;
 
     console.log('[Supabase] Uploading image:', fileName);
@@ -447,12 +486,11 @@ export const uploadAuditImage = async (
       throw uploadError;
     }
 
-    // Get the public URL
     const { data: { publicUrl } } = supabase.storage
       .from('audit-images')
       .getPublicUrl(uploadData.path);
 
-    // First, ensure the audit_item exists (upsert)
+    // First ensure the audit_item exists via RPC (uses same constraint)
     const { data: auditItem, error: itemError } = await supabase
       .from('audit_items')
       .upsert({
@@ -467,13 +505,13 @@ export const uploadAuditImage = async (
       throw itemError;
     }
 
-    // Save image reference to database
+    // Save image reference to database (uses unique constraint to prevent duplicates)
     const { error: dbError } = await supabase
       .from('audit_item_images')
-      .insert({
+      .upsert({
         audit_item_id: auditItem.id,
         image_url: publicUrl,
-      });
+      }, { onConflict: 'audit_item_id,image_url' });
 
     if (dbError) {
       console.error('[RLS Error] Failed to save image reference:', dbError);
