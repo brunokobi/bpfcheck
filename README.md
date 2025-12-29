@@ -1,73 +1,82 @@
-# Welcome to your Lovable project
+# BPF Check - Sistema de Auditorias Sanitárias
 
-## Project info
+O **BPF Check** é uma aplicação web desenvolvida para facilitar o gerenciamento e a execução de auditorias sanitárias em estabelecimentos de alimentação, baseada nas normas da **RDC 216/2004** da ANVISA.
 
-**URL**: https://lovable.dev/projects/964e4b13-bb52-4ccb-89fc-036dee1be87c
+O sistema permite o acompanhamento em tempo real do status das auditorias, cálculo de taxas de conformidade e geração de relatórios.
 
-## How can I edit this code?
+## 🚀 Funcionalidades Principais
 
-There are several ways of editing your application.
+- **Dashboard Interativo:** Visão geral com estatísticas vitais (Total de auditorias, Em andamento, Concluídas e Taxa de Conformidade).
+- **Gestão de Auditorias:**
+  - Criação de novas auditorias baseadas em checklists padronizados.
+  - Acompanhamento de status (Em andamento / Concluída).
+  - Cálculo automático de porcentagem de conformidade.
+- **Histórico e Relatórios:**
+  - Visualização de auditorias recentes.
+  - Acesso ao histórico completo.
+  - Exportação de relatórios (funcionalidade prevista).
+- **Interface Moderna:** Design responsivo e intuitivo com feedback visual claro.
 
-**Use Lovable**
+## 🛠️ Tecnologias Utilizadas
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/964e4b13-bb52-4ccb-89fc-036dee1be87c) and start prompting.
+O projeto foi construído utilizando as seguintes tecnologias e bibliotecas:
 
-Changes made via Lovable will be committed automatically to this repo.
+- **[React](https://react.dev/)** - Biblioteca para construção de interfaces.
+- **[TypeScript](https://www.typescriptlang.org/)** - Superset JavaScript com tipagem estática.
+- **[Tailwind CSS](https://tailwindcss.com/)** - Framework de utilitários CSS para estilização.
+- **[Shadcn/ui](https://ui.shadcn.com/)** - Coleção de componentes de UI reutilizáveis (Cards, Badges, Buttons).
+- **[Lucide React](https://lucide.dev/)** - Biblioteca de ícones.
+- **[Date-fns](https://date-fns.org/)** - Manipulação e formatação de datas.
 
-**Use your preferred IDE**
+## 📂 Estrutura do Projeto (Parcial)
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
-
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
+```
+src/
+├── components/
+│   ├── dashboard/
+│   │   └── DashboardHome.tsx  # Componente principal do painel de controle
+│   └── ui/                    # Componentes base (Button, Card, Badge, etc.)
+├── hooks/
+│   └── useAudits.ts           # Hook personalizado para lógica de dados das auditorias
+└── ...
 ```
 
-**Edit a file directly in GitHub**
+## 📦 Como Rodar o Projeto
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+### Pré-requisitos
 
-**Use GitHub Codespaces**
+- Node.js (versão 16 ou superior)
+- npm ou yarn
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+### Instalação
 
-## What technologies are used for this project?
+1. Clone o repositório:
+   ```bash
+   git clone https://github.com/seu-usuario/bpfcheck.git
+   ```
 
-This project is built with:
+2. Instale as dependências:
+   ```bash
+   cd bpfcheck
+   npm install
+   # ou
+   yarn install
+   ```
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+3. Execute o servidor de desenvolvimento:
+   ```bash
+   npm run dev
+   # ou
+   yarn dev
+   ```
 
-## How can I deploy this project?
+4. Acesse a aplicação no navegador (geralmente em `http://localhost:5173`).
 
-Simply open [Lovable](https://lovable.dev/projects/964e4b13-bb52-4ccb-89fc-036dee1be87c) and click on Share -> Publish.
+## 📄 Licença
 
-## Can I connect a custom domain to my Lovable project?
+Este projeto é de uso proprietário da ORBITGEO.
+```
 
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-tricks/custom-domain#step-by-step-guide)
+<!--
+[PROMPT_SUGGESTION]Pode criar o arquivo do hook useAudits.ts com dados fictícios para eu testar o dashboard?[/PROMPT_SUGGESTION]
+[PROMPT_SUGGESTION]Gostaria de adicionar testes unitários para este componente DashboardHome. Pode gerar o arquivo de teste?[/PROMPT_SUGGESTION]

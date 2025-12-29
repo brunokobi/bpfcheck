@@ -58,7 +58,7 @@ export const DashboardHome = ({ onNewAudit, onViewReports, onViewHistory, onAudi
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold text-primary">Dashboard</h1>
-          <p className="text-muted-foreground">Gerencie suas auditorias sanitárias teste deploy</p>
+          <p className="text-muted-foreground">Gerencie suas auditorias sanitárias</p>
         </div>
         <Button onClick={onNewAudit} className="bg-gradient-primary hover:shadow-primary">
           <Plus className="w-4 h-4 mr-2" />

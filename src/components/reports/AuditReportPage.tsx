@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { 
   ArrowLeft, 
   Download,
@@ -19,14 +18,10 @@ import { ptBR } from "date-fns/locale";
 import { supabase } from "@/integrations/supabase/client";
 import { Audit, AuditSummary, getAuditById, getAuditSummary, getAuditItems, getChecklistWithSections } from "@/lib/supabase-service";
 import jsPDF from 'jspdf';
-import 'jspdf-autotable';
+import autoTable from 'jspdf-autotable';
 
-// Extend jsPDF type for autoTable
-declare module 'jspdf' {
-  interface jsPDF {
-    autoTable: (options: any) => jsPDF;
-  }
-}
+
+
 
 interface AuditReportPageProps {
   auditId: string;
@@ -173,6 +168,7 @@ export const AuditReportPage = ({ auditId, onBack }: AuditReportPageProps) => {
   };
 
   const generatePDF = async () => {
+    console.log('Generating PDF...');
     if (!reportData) return;
     
     setGeneratingPdf(true);
@@ -272,36 +268,40 @@ export const AuditReportPage = ({ auditId, onBack }: AuditReportPageProps) => {
         doc.setTextColor(0, 0, 0);
         yPos += 12;
         
-        // Items table
-        const tableData = section.items.map((item, index) => [
-          (index + 1).toString(),
-          item.description.substring(0, 80) + (item.description.length > 80 ? '...' : ''),
-          getResultText(item.result),
-          item.observation?.substring(0, 40) || '-',
-        ]);
-        
-        doc.autoTable({
-          startY: yPos,
-          head: [['#', 'Item', 'Status', 'Observação']],
-          body: tableData,
-          margin: { left: 14, right: 14 },
-          styles: { fontSize: 8, cellPadding: 2 },
-          headStyles: { fillColor: [200, 200, 200], textColor: [0, 0, 0] },
-          columnStyles: {
-            0: { cellWidth: 10 },
-            1: { cellWidth: 80 },
-            2: { cellWidth: 25 },
-            3: { cellWidth: 50 },
-          },
-          didDrawPage: () => {
-            yPos = (doc as any).lastAutoTable.finalY + 10;
-          },
-        });
-        
-        yPos = (doc as any).lastAutoTable.finalY + 10;
+// Items table
+const tableData = section.items.map((item, index) => [
+  (index + 1).toString(),
+  item.description.substring(0, 80) + (item.description.length > 80 ? '...' : ''),
+  getResultText(item.result),
+  item.observation?.substring(0, 40) || '-',
+]);
+
+try {
+  autoTable(doc, {
+    startY: yPos,
+    head: [['#', 'Item', 'Status', 'Observação']],
+    body: tableData,
+    margin: { left: 14, right: 14 },
+    styles: { fontSize: 8, cellPadding: 2 },
+    headStyles: { fillColor: [200, 200, 200], textColor: [0, 0, 0] },
+    columnStyles: {
+      0: { cellWidth: 10 },
+      1: { cellWidth: 80 },
+      2: { cellWidth: 25 },
+      3: { cellWidth: 50 },
+    },
+  });
+
+  const lastTable = (doc as any).lastAutoTable;
+  if (lastTable) {
+    yPos = lastTable.finalY + 10;
+  }
+} catch (tableError) {
+  console.error('Error creating table:', tableError);
+}
       }
-      
-      // Footer on last page
+
+// Footer on last page
       const pageCount = doc.getNumberOfPages();
       for (let i = 1; i <= pageCount; i++) {
         doc.setPage(i);
