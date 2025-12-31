@@ -1,8 +1,14 @@
 import { useState, useEffect } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { 
-  ArrowLeft, 
+import {
+  ArrowLeft,
   Download,
   Loader2,
   CheckCircle,
@@ -11,17 +17,21 @@ import {
   FileText,
   Building,
   User,
-  Calendar
+  Calendar,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { supabase } from "@/integrations/supabase/client";
-import { Audit, AuditSummary, getAuditById, getAuditSummary, getAuditItems, getChecklistWithSections } from "@/lib/supabase-service";
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
-
-
-
+import {
+  Audit,
+  AuditSummary,
+  getAuditById,
+  getAuditSummary,
+  getAuditItems,
+  getChecklistWithSections,
+} from "@/lib/supabase-service";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
 interface AuditReportPageProps {
   auditId: string;
@@ -58,25 +68,26 @@ export const AuditReportPage = ({ auditId, onBack }: AuditReportPageProps) => {
     try {
       // Fetch audit
       const { data: audit, error: auditError } = await getAuditById(auditId);
-      if (auditError || !audit) throw new Error(auditError || 'Audit not found');
+      if (auditError || !audit)
+        throw new Error(auditError || "Audit not found");
 
       // Fetch summary
       const { data: summary } = await getAuditSummary(auditId);
 
       // Fetch auditor profile
       const { data: profile } = await supabase
-        .from('profiles')
-        .select('name, email')
-        .eq('id', audit.user_id)
+        .from("profiles")
+        .select("name, email")
+        .eq("id", audit.user_id)
         .single();
 
       // Fetch location
-      let locationName = audit.location || 'Não informado';
+      let locationName = audit.location || "Não informado";
       if (audit.location_id) {
         const { data: location } = await supabase
-          .from('audit_locations')
-          .select('name, address, city, state')
-          .eq('id', audit.location_id)
+          .from("audit_locations")
+          .select("name, address, city, state")
+          .eq("id", audit.location_id)
           .single();
         if (location) {
           locationName = location.name;
@@ -87,54 +98,68 @@ export const AuditReportPage = ({ auditId, onBack }: AuditReportPageProps) => {
       }
 
       // Fetch checklist with sections
-      const { data: checklistData } = await getChecklistWithSections(audit.checklist_id);
-      
+      const { data: checklistData } = await getChecklistWithSections(
+        audit.checklist_id
+      );
+
       // Fetch audit items
       const { data: auditItems } = await getAuditItems(auditId);
 
       // Fetch images for each audit item
-      const auditItemIds = auditItems?.map(item => item.id) || [];
+      const auditItemIds = auditItems?.map((item) => item.id) || [];
       const { data: allImages } = await supabase
-        .from('audit_item_images')
-        .select('audit_item_id, image_url')
-        .in('audit_item_id', auditItemIds);
+        .from("audit_item_images")
+        .select("audit_item_id, image_url")
+        .in("audit_item_id", auditItemIds);
 
       // Build sections with results
-      const sections = checklistData?.sections.map(section => ({
-        title: section.title,
-        items: section.items.map(item => {
-          const auditItem = auditItems?.find(ai => ai.checklist_item_id === item.id);
-          const itemImages = allImages?.filter(img => 
-            auditItems?.find(ai => ai.checklist_item_id === item.id && ai.id === img.audit_item_id)
-          ).map(img => img.image_url) || [];
+      const sections =
+        checklistData?.sections.map((section) => ({
+          title: section.title,
+          items: section.items.map((item) => {
+            const auditItem = auditItems?.find(
+              (ai) => ai.checklist_item_id === item.id
+            );
+            const itemImages =
+              allImages
+                ?.filter((img) =>
+                  auditItems?.find(
+                    (ai) =>
+                      ai.checklist_item_id === item.id &&
+                      ai.id === img.audit_item_id
+                  )
+                )
+                .map((img) => img.image_url) || [];
 
-          return {
-            description: item.description,
-            result: auditItem?.result || null,
-            observation: auditItem?.observation || null,
-            images: itemImages,
-          };
-        }),
-      })) || [];
+            return {
+              description: item.description,
+              result: auditItem?.result || null,
+              observation: auditItem?.observation || null,
+              images: itemImages,
+            };
+          }),
+        })) || [];
 
       setReportData({
         audit,
         summary,
-        auditorName: profile?.name || profile?.email || 'Não identificado',
+        auditorName: profile?.name || profile?.email || "Não identificado",
         locationName,
         sections,
       });
     } catch (error) {
-      console.error('[AuditReportPage] Error fetching report data:', error);
+      console.error("[AuditReportPage] Error fetching report data:", error);
     } finally {
       setLoading(false);
     }
   };
 
   const formatDate = (dateString: string | null) => {
-    if (!dateString) return '-';
+    if (!dateString) return "-";
     try {
-      return format(new Date(dateString), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR });
+      return format(new Date(dateString), "dd/MM/yyyy 'às' HH:mm", {
+        locale: ptBR,
+      });
     } catch {
       return dateString;
     }
@@ -142,188 +167,289 @@ export const AuditReportPage = ({ auditId, onBack }: AuditReportPageProps) => {
 
   const getResultText = (result: string | null) => {
     switch (result) {
-      case 'conforme': return 'Conforme';
-      case 'nao_conforme': return 'Não Conforme';
-      case 'nao_aplicavel': return 'Não Aplicável';
-      default: return 'Não avaliado';
+      case "conforme":
+        return "Conforme";
+      case "nao_conforme":
+        return "Não Conforme";
+      case "nao_aplicavel":
+        return "Não Aplicável";
+      default:
+        return "Não avaliado";
     }
   };
 
   const getResultColor = (result: string | null) => {
     switch (result) {
-      case 'conforme': return 'text-success';
-      case 'nao_conforme': return 'text-destructive';
-      case 'nao_aplicavel': return 'text-muted-foreground';
-      default: return 'text-muted-foreground';
+      case "conforme":
+        return "text-success";
+      case "nao_conforme":
+        return "text-destructive";
+      case "nao_aplicavel":
+        return "text-muted-foreground";
+      default:
+        return "text-muted-foreground";
     }
   };
 
   const getResultIcon = (result: string | null) => {
     switch (result) {
-      case 'conforme': return <CheckCircle className="w-5 h-5 text-success" />;
-      case 'nao_conforme': return <XCircle className="w-5 h-5 text-destructive" />;
-      case 'nao_aplicavel': return <MinusCircle className="w-5 h-5 text-muted-foreground" />;
-      default: return <MinusCircle className="w-5 h-5 text-muted-foreground" />;
+      case "conforme":
+        return <CheckCircle className="w-5 h-5 text-success" />;
+      case "nao_conforme":
+        return <XCircle className="w-5 h-5 text-destructive" />;
+      case "nao_aplicavel":
+        return <MinusCircle className="w-5 h-5 text-muted-foreground" />;
+      default:
+        return <MinusCircle className="w-5 h-5 text-muted-foreground" />;
     }
   };
 
-  const generatePDF = async () => {
-    console.log('Generating PDF...');
-    if (!reportData) return;
-    
-    setGeneratingPdf(true);
-    
-    try {
-      const doc = new jsPDF();
-      const pageWidth = doc.internal.pageSize.getWidth();
-      
-      // Header
+  const getSignedImage = async (path: string) => {
+    const { data, error } = await supabase.storage
+      .from("audit-images")
+      .createSignedUrl(path, 60 * 60);
+
+    if (error || !data?.signedUrl) return null;
+    return data.signedUrl;
+  };
+
+  const imageToBase64 = async (url: string): Promise<string> => {
+    const res = await fetch(url);
+    const blob = await res.blob();
+
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  };
+
+const generatePDF = async () => {
+  if (!reportData) return;
+
+  setGeneratingPdf(true);
+
+  try {
+    const doc = new jsPDF();
+    const pageWidth = doc.internal.pageSize.getWidth();
+    let yPos = 0;
+
+    /* =========================
+       HELPERS
+    ========================= */
+
+    const newPageIfNeeded = (limit = 260) => {
+      if (yPos > limit) {
+        doc.addPage();
+        yPos = 20;
+      }
+    };
+
+    const imageToThumbnailBase64 = async (
+      url: string,
+      maxWidth = 300
+    ): Promise<string> => {
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.src = url;
+
+      await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = reject;
+      });
+
+      const scale = maxWidth / img.width;
+      const canvas = document.createElement("canvas");
+      canvas.width = maxWidth;
+      canvas.height = img.height * scale;
+
+      const ctx = canvas.getContext("2d")!;
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+      return canvas.toDataURL("image/jpeg", 0.75); // JPEG compatível com jsPDF
+    };
+
+    /* =========================
+       HEADER
+    ========================= */
+
+    doc.setFillColor(0, 102, 153);
+    doc.rect(0, 0, pageWidth, 40, "F");
+
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(24);
+    doc.setFont("helvetica", "bold");
+    doc.text("BPF CHECK", 14, 20);
+
+    doc.setFontSize(12);
+    doc.setFont("helvetica", "normal");
+    doc.text("Relatório de Auditoria Sanitária", 14, 30);
+
+    doc.setTextColor(0, 0, 0);
+    yPos = 55;
+
+    /* =========================
+       INFO AUDITORIA
+    ========================= */
+
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "bold");
+    doc.text("LOCAL:", 14, yPos);
+    doc.setFont("helvetica", "normal");
+    doc.text(reportData.locationName, 40, yPos);
+
+    yPos += 8;
+    doc.setFont("helvetica", "bold");
+    doc.text("AUDITOR:", 14, yPos);
+    doc.setFont("helvetica", "normal");
+    doc.text(reportData.auditorName, 40, yPos);
+
+    yPos += 8;
+    doc.setFont("helvetica", "bold");
+    doc.text("INÍCIO:", 14, yPos);
+    doc.setFont("helvetica", "normal");
+    doc.text(formatDate(reportData.audit.started_at), 40, yPos);
+
+    doc.setFont("helvetica", "bold");
+    doc.text("TÉRMINO:", 100, yPos);
+    doc.setFont("helvetica", "normal");
+    doc.text(formatDate(reportData.audit.finished_at), 130, yPos);
+
+    /* =========================
+       RESUMO
+    ========================= */
+
+    yPos += 15;
+    doc.setFillColor(240, 240, 240);
+    doc.rect(14, yPos, pageWidth - 28, 25, "F");
+
+    yPos += 10;
+    doc.setFontSize(12);
+    doc.setFont("helvetica", "bold");
+    doc.text("RESUMO DA AUDITORIA", pageWidth / 2, yPos, { align: "center" });
+
+    yPos += 10;
+    doc.setFontSize(10);
+
+    const s = reportData.summary;
+    const conforme = s?.conforme_count || 0;
+    const naoConforme = s?.nao_conforme_count || 0;
+    const na = s?.nao_aplicavel_count || 0;
+    const total = conforme + naoConforme;
+    const taxa = total > 0 ? Math.round((conforme / total) * 100) : 0;
+
+    doc.setTextColor(0, 128, 0);
+    doc.text(`Conforme: ${conforme}`, 30, yPos);
+    doc.setTextColor(255, 0, 0);
+    doc.text(`Não Conforme: ${naoConforme}`, 80, yPos);
+    doc.setTextColor(128, 128, 128);
+    doc.text(`N/A: ${na}`, 140, yPos);
+    doc.setTextColor(0, 102, 153);
+    doc.text(`Taxa: ${taxa}%`, 170, yPos);
+
+    doc.setTextColor(0, 0, 0);
+    yPos += 20;
+
+    /* =========================
+       SEÇÕES + ITENS + IMAGENS
+    ========================= */
+
+    for (const section of reportData.sections) {
+      newPageIfNeeded();
+
+      // Cabeçalho da seção
       doc.setFillColor(0, 102, 153);
-      doc.rect(0, 0, pageWidth, 40, 'F');
-      
+      doc.rect(14, yPos, pageWidth - 28, 8, "F");
       doc.setTextColor(255, 255, 255);
-      doc.setFontSize(24);
-      doc.setFont('helvetica', 'bold');
-      doc.text('BPF CHECK', 14, 20);
-      
-      doc.setFontSize(12);
-      doc.setFont('helvetica', 'normal');
-      doc.text('Relatório de Auditoria Sanitária', 14, 30);
-      
-      // Audit info
-      doc.setTextColor(0, 0, 0);
-      let yPos = 55;
-      
       doc.setFontSize(10);
-      doc.setFont('helvetica', 'bold');
-      doc.text('LOCAL:', 14, yPos);
-      doc.setFont('helvetica', 'normal');
-      doc.text(reportData.locationName, 40, yPos);
-      
-      yPos += 8;
-      doc.setFont('helvetica', 'bold');
-      doc.text('AUDITOR:', 14, yPos);
-      doc.setFont('helvetica', 'normal');
-      doc.text(reportData.auditorName, 40, yPos);
-      
-      yPos += 8;
-      doc.setFont('helvetica', 'bold');
-      doc.text('INÍCIO:', 14, yPos);
-      doc.setFont('helvetica', 'normal');
-      doc.text(formatDate(reportData.audit.started_at), 40, yPos);
-      
-      doc.setFont('helvetica', 'bold');
-      doc.text('TÉRMINO:', 100, yPos);
-      doc.setFont('helvetica', 'normal');
-      doc.text(formatDate(reportData.audit.finished_at), 130, yPos);
-      
-      // Summary box
-      yPos += 15;
-      doc.setFillColor(240, 240, 240);
-      doc.rect(14, yPos, pageWidth - 28, 25, 'F');
-      
-      yPos += 10;
-      doc.setFontSize(12);
-      doc.setFont('helvetica', 'bold');
-      doc.text('RESUMO DA AUDITORIA', 14 + (pageWidth - 28) / 2, yPos, { align: 'center' });
-      
-      yPos += 10;
-      doc.setFontSize(10);
-      const summary = reportData.summary;
-      const conformeCount = summary?.conforme_count || 0;
-      const naoConformeCount = summary?.nao_conforme_count || 0;
-      const naCount = summary?.nao_aplicavel_count || 0;
-      const total = conformeCount + naoConformeCount;
-      const complianceRate = total > 0 ? Math.round((conformeCount / total) * 100) : 0;
-      
-      doc.setTextColor(0, 128, 0);
-      doc.text(`Conforme: ${conformeCount}`, 30, yPos);
-      doc.setTextColor(255, 0, 0);
-      doc.text(`Não Conforme: ${naoConformeCount}`, 80, yPos);
-      doc.setTextColor(128, 128, 128);
-      doc.text(`N/A: ${naCount}`, 140, yPos);
-      doc.setTextColor(0, 102, 153);
-      doc.text(`Taxa: ${complianceRate}%`, 170, yPos);
-      
+      doc.setFont("helvetica", "bold");
+      doc.text(section.title, 16, yPos + 6);
+
       doc.setTextColor(0, 0, 0);
-      
-      // Sections and items
-      yPos += 20;
-      
-      for (const section of reportData.sections) {
-        // Check if we need a new page
-        if (yPos > 250) {
-          doc.addPage();
-          yPos = 20;
-        }
-        
-        // Section header
-        doc.setFillColor(0, 102, 153);
-        doc.rect(14, yPos, pageWidth - 28, 8, 'F');
-        doc.setTextColor(255, 255, 255);
-        doc.setFontSize(10);
-        doc.setFont('helvetica', 'bold');
-        doc.text(section.title, 16, yPos + 6);
-        
-        doc.setTextColor(0, 0, 0);
-        yPos += 12;
-        
-// Items table
-const tableData = section.items.map((item, index) => [
-  (index + 1).toString(),
-  item.description.substring(0, 80) + (item.description.length > 80 ? '...' : ''),
-  getResultText(item.result),
-  item.observation?.substring(0, 40) || '-',
-]);
+      yPos += 12;
 
-try {
-  autoTable(doc, {
-    startY: yPos,
-    head: [['#', 'Item', 'Status', 'Observação']],
-    body: tableData,
-    margin: { left: 14, right: 14 },
-    styles: { fontSize: 8, cellPadding: 2 },
-    headStyles: { fillColor: [200, 200, 200], textColor: [0, 0, 0] },
-    columnStyles: {
-      0: { cellWidth: 10 },
-      1: { cellWidth: 80 },
-      2: { cellWidth: 25 },
-      3: { cellWidth: 50 },
-    },
-  });
+      for (let i = 0; i < section.items.length; i++) {
+        const item = section.items[i];
+        newPageIfNeeded(240);
 
-  const lastTable = (doc as any).lastAutoTable;
-  if (lastTable) {
-    yPos = lastTable.finalY + 10;
-  }
-} catch (tableError) {
-  console.error('Error creating table:', tableError);
-}
-      }
+        // Texto do item
+        doc.setFontSize(9);
+        doc.setFont("helvetica", "bold");
+        doc.text(`${i + 1}. ${item.description}`, 14, yPos, {
+          maxWidth: pageWidth - 28,
+        });
 
-// Footer on last page
-      const pageCount = doc.getNumberOfPages();
-      for (let i = 1; i <= pageCount; i++) {
-        doc.setPage(i);
-        doc.setFontSize(8);
-        doc.setTextColor(128, 128, 128);
+        yPos += 6;
+
+        doc.setFont("helvetica", "normal");
         doc.text(
-          `Página ${i} de ${pageCount} - Gerado por BPF Check em ${format(new Date(), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}`,
-          pageWidth / 2,
-          doc.internal.pageSize.getHeight() - 10,
-          { align: 'center' }
+          `Status: ${getResultText(item.result)} | Observação: ${
+            item.observation || "-"
+          }`,
+          14,
+          yPos,
+          { maxWidth: pageWidth - 28 }
         );
+
+        yPos += 6;
+
+        // Miniaturas
+        if (item.images && item.images.length > 0) {
+          let x = 14;
+
+          for (const imageUrl of item.images) {
+            const thumbBase64 = await imageToThumbnailBase64(imageUrl);
+
+            if (x + 45 > pageWidth - 14) {
+              x = 14;
+              yPos += 40;
+            }
+
+            newPageIfNeeded(220);
+            doc.addImage(thumbBase64, "JPEG", x, yPos, 40, 30);
+            x += 45;
+          }
+
+          yPos += 35;
+        }
+
+        yPos += 8;
       }
-      
-      // Download
-      const fileName = `auditoria_${reportData.locationName.replace(/[^a-zA-Z0-9]/g, '_')}_${format(new Date(reportData.audit.started_at || new Date()), 'yyyy-MM-dd')}.pdf`;
-      doc.save(fileName);
-    } catch (error) {
-      console.error('[AuditReportPage] Error generating PDF:', error);
-    } finally {
-      setGeneratingPdf(false);
     }
-  };
+
+    /* =========================
+       FOOTER
+    ========================= */
+
+    const pageCount = doc.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i);
+      doc.setFontSize(8);
+      doc.setTextColor(128, 128, 128);
+      doc.text(
+        `Página ${i} de ${pageCount} - Gerado por BPF Check em ${format(
+          new Date(),
+          "dd/MM/yyyy 'às' HH:mm",
+          { locale: ptBR }
+        )}`,
+        pageWidth / 2,
+        doc.internal.pageSize.getHeight() - 10,
+        { align: "center" }
+      );
+    }
+
+    doc.save(`auditoria_${reportData.audit.id}.pdf`);
+  } catch (error) {
+    console.error("[generatePDF] Error:", error);
+  } finally {
+    setGeneratingPdf(false);
+  }
+};
+
+
+
+
 
   if (loading) {
     return (
@@ -353,7 +479,8 @@ try {
   const naoConformeCount = summary?.nao_conforme_count || 0;
   const naCount = summary?.nao_aplicavel_count || 0;
   const total = conformeCount + naoConformeCount;
-  const complianceRate = total > 0 ? Math.round((conformeCount / total) * 100) : 0;
+  const complianceRate =
+    total > 0 ? Math.round((conformeCount / total) * 100) : 0;
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -365,11 +492,17 @@ try {
             Voltar
           </Button>
           <div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-primary">Relatório de Auditoria</h1>
+            <h1 className="text-2xl sm:text-3xl font-bold text-primary">
+              Relatório de Auditoria
+            </h1>
             <p className="text-muted-foreground">{reportData.locationName}</p>
           </div>
         </div>
-        <Button onClick={generatePDF} disabled={generatingPdf} className="bg-gradient-primary">
+        <Button
+          onClick={generatePDF}
+          disabled={generatingPdf}
+          className="bg-gradient-primary"
+        >
           {generatingPdf ? (
             <Loader2 className="w-4 h-4 mr-2 animate-spin" />
           ) : (
@@ -407,14 +540,20 @@ try {
               <Calendar className="w-5 h-5 text-muted-foreground" />
               <div>
                 <p className="text-sm text-muted-foreground">Data de Início</p>
-                <p className="font-medium">{formatDate(reportData.audit.started_at)}</p>
+                <p className="font-medium">
+                  {formatDate(reportData.audit.started_at)}
+                </p>
               </div>
             </div>
             <div className="flex items-center space-x-3">
               <Calendar className="w-5 h-5 text-muted-foreground" />
               <div>
-                <p className="text-sm text-muted-foreground">Data de Conclusão</p>
-                <p className="font-medium">{formatDate(reportData.audit.finished_at)}</p>
+                <p className="text-sm text-muted-foreground">
+                  Data de Conclusão
+                </p>
+                <p className="font-medium">
+                  {formatDate(reportData.audit.finished_at)}
+                </p>
               </div>
             </div>
           </div>
@@ -433,16 +572,24 @@ try {
               <p className="text-sm text-muted-foreground">Conforme</p>
             </div>
             <div className="text-center p-4 bg-destructive/10 rounded-lg">
-              <p className="text-3xl font-bold text-destructive">{naoConformeCount}</p>
+              <p className="text-3xl font-bold text-destructive">
+                {naoConformeCount}
+              </p>
               <p className="text-sm text-muted-foreground">Não Conforme</p>
             </div>
             <div className="text-center p-4 bg-muted rounded-lg">
-              <p className="text-3xl font-bold text-muted-foreground">{naCount}</p>
+              <p className="text-3xl font-bold text-muted-foreground">
+                {naCount}
+              </p>
               <p className="text-sm text-muted-foreground">N/A</p>
             </div>
             <div className="text-center p-4 bg-primary/10 rounded-lg">
-              <p className="text-3xl font-bold text-primary">{complianceRate}%</p>
-              <p className="text-sm text-muted-foreground">Taxa de Conformidade</p>
+              <p className="text-3xl font-bold text-primary">
+                {complianceRate}%
+              </p>
+              <p className="text-sm text-muted-foreground">
+                Taxa de Conformidade
+              </p>
             </div>
           </div>
         </CardContent>
@@ -454,8 +601,12 @@ try {
           <CardHeader>
             <CardTitle className="text-lg">{section.title}</CardTitle>
             <CardDescription>
-              {section.items.filter(i => i.result === 'conforme').length} conforme, 
-              {section.items.filter(i => i.result === 'nao_conforme').length} não conforme
+              {section.items.filter((i) => i.result === "conforme").length}{" "}
+              conforme,
+              {
+                section.items.filter((i) => i.result === "nao_conforme").length
+              }{" "}
+              não conforme
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -473,7 +624,7 @@ try {
                       {item.images.length > 0 && (
                         <div className="flex flex-wrap gap-2 mt-2">
                           {item.images.map((img, imgIndex) => (
-                            <img 
+                            <img
                               key={imgIndex}
                               src={img}
                               alt={`Foto ${imgIndex + 1}`}
@@ -485,7 +636,11 @@ try {
                     </div>
                     <div className="flex items-center space-x-2">
                       {getResultIcon(item.result)}
-                      <span className={`text-sm font-medium ${getResultColor(item.result)}`}>
+                      <span
+                        className={`text-sm font-medium ${getResultColor(
+                          item.result
+                        )}`}
+                      >
                         {getResultText(item.result)}
                       </span>
                     </div>

@@ -1,17 +1,23 @@
 import { useState, useRef } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
-import { 
-  Camera, 
-  Save, 
-  ArrowLeft, 
-  ArrowRight, 
-  Loader2, 
-  CheckCircle
+import {
+  Camera,
+  Save,
+  ArrowLeft,
+  ArrowRight,
+  Loader2,
+  CheckCircle,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { SectionWithItems, ChecklistItemWithResult } from "@/hooks/useAudits";
@@ -21,10 +27,31 @@ import { uploadAuditImage } from "@/lib/supabase-service";
 type AuditsHook = {
   currentAudit: any;
   checklistSections: SectionWithItems[];
-  setChecklistSections: React.Dispatch<React.SetStateAction<SectionWithItems[]>>;
+  setChecklistSections: React.Dispatch<
+    React.SetStateAction<SectionWithItems[]>
+  >;
   startNewAudit: (locationName?: string, locationId?: string) => Promise<any>;
-  saveItems: (auditId: string, items: { checklist_item_id: string; result: string | null; observation: string | null }[]) => Promise<boolean>;
-  finishAudit: (auditId: string, summary: { conforme_count: number; nao_conforme_count: number; nao_aplicavel_count: number }, items?: { checklist_item_id: string; result: string | null; observation: string | null }[]) => Promise<boolean>;
+  saveItems: (
+    auditId: string,
+    items: {
+      checklist_item_id: string;
+      result: string | null;
+      observation: string | null;
+    }[]
+  ) => Promise<boolean>;
+  finishAudit: (
+    auditId: string,
+    summary: {
+      conforme_count: number;
+      nao_conforme_count: number;
+      nao_aplicavel_count: number;
+    },
+    items?: {
+      checklist_item_id: string;
+      result: string | null;
+      observation: string | null;
+    }[]
+  ) => Promise<boolean>;
   loading: boolean;
 };
 
@@ -35,7 +62,12 @@ interface ChecklistFormProps {
   isEditing?: boolean;
 }
 
-export const ChecklistForm = ({ onBack, onSave, auditsHook, isEditing = false }: ChecklistFormProps) => {
+export const ChecklistForm = ({
+  onBack,
+  onSave,
+  auditsHook,
+  isEditing = false,
+}: ChecklistFormProps) => {
   const { toast } = useToast();
   const {
     currentAudit,
@@ -81,36 +113,47 @@ export const ChecklistForm = ({ onBack, onSave, auditsHook, isEditing = false }:
   const currentSectionItems = currentSectionData?.items || [];
 
   const calculateProgress = () => {
-    const allItems = sections.flatMap(s => s.items);
-    const completedItems = allItems.filter(item => item.result !== null).length;
+    const allItems = sections.flatMap((s) => s.items);
+    const completedItems = allItems.filter(
+      (item) => item.result !== null
+    ).length;
     return allItems.length > 0 ? (completedItems / allItems.length) * 100 : 0;
   };
 
   const calculateSummary = () => {
-    const allItems = sections.flatMap(s => s.items);
+    const allItems = sections.flatMap((s) => s.items);
     return {
-      conforme_count: allItems.filter(i => i.result === 'conforme').length,
-      nao_conforme_count: allItems.filter(i => i.result === 'nao_conforme').length,
-      nao_aplicavel_count: allItems.filter(i => i.result === 'nao_aplicavel').length,
+      conforme_count: allItems.filter((i) => i.result === "conforme").length,
+      nao_conforme_count: allItems.filter((i) => i.result === "nao_conforme")
+        .length,
+      nao_aplicavel_count: allItems.filter((i) => i.result === "nao_aplicavel")
+        .length,
     };
   };
 
-  const updateItemStatus = (itemId: string, result: ChecklistItemWithResult["result"]) => {
-    setChecklistSections(prev => prev.map(section => ({
-      ...section,
-      items: section.items.map(item =>
-        item.id === itemId ? { ...item, result } : item
-      ),
-    })));
+  const updateItemStatus = (
+    itemId: string,
+    result: ChecklistItemWithResult["result"]
+  ) => {
+    setChecklistSections((prev) =>
+      prev.map((section) => ({
+        ...section,
+        items: section.items.map((item) =>
+          item.id === itemId ? { ...item, result } : item
+        ),
+      }))
+    );
   };
 
   const updateItemObservations = (itemId: string, observation: string) => {
-    setChecklistSections(prev => prev.map(section => ({
-      ...section,
-      items: section.items.map(item =>
-        item.id === itemId ? { ...item, observation } : item
-      ),
-    })));
+    setChecklistSections((prev) =>
+      prev.map((section) => ({
+        ...section,
+        items: section.items.map((item) =>
+          item.id === itemId ? { ...item, observation } : item
+        ),
+      }))
+    );
   };
 
   const handleTakePhoto = (itemId: string) => {
@@ -123,11 +166,15 @@ export const ChecklistForm = ({ onBack, onSave, auditsHook, isEditing = false }:
     if (!file || !activeItemId || !currentAudit) return;
 
     setUploadingImage(activeItemId);
-    
+
     try {
       // Upload image with audit context
-      const { data: imageUrl, error } = await uploadAuditImage(file, currentAudit.id, activeItemId);
-      
+      const { data: imageUrl, error } = await uploadAuditImage(
+        file,
+        currentAudit.id,
+        activeItemId
+      );
+
       if (error) {
         toast({
           title: "Erro ao enviar imagem",
@@ -136,14 +183,16 @@ export const ChecklistForm = ({ onBack, onSave, auditsHook, isEditing = false }:
         });
       } else if (imageUrl) {
         // Update local state with the image
-        setChecklistSections(prev => prev.map(section => ({
-          ...section,
-          items: section.items.map(item =>
-            item.id === activeItemId 
-              ? { ...item, photos: [...item.photos, imageUrl] } 
-              : item
-          ),
-        })));
+        setChecklistSections((prev) =>
+          prev.map((section) => ({
+            ...section,
+            items: section.items.map((item) =>
+              item.id === activeItemId
+                ? { ...item, photos: [...item.photos, imageUrl] }
+                : item
+            ),
+          }))
+        );
 
         toast({
           title: "Imagem enviada",
@@ -151,7 +200,7 @@ export const ChecklistForm = ({ onBack, onSave, auditsHook, isEditing = false }:
         });
       }
     } catch (err) {
-      console.error('[ChecklistForm] Image upload error:', err);
+      console.error("[ChecklistForm] Image upload error:", err);
       toast({
         title: "Erro",
         description: "Falha ao enviar imagem.",
@@ -162,7 +211,7 @@ export const ChecklistForm = ({ onBack, onSave, auditsHook, isEditing = false }:
       setActiveItemId(null);
       // Reset file input
       if (fileInputRef.current) {
-        fileInputRef.current.value = '';
+        fileInputRef.current.value = "";
       }
     }
   };
@@ -173,10 +222,10 @@ export const ChecklistForm = ({ onBack, onSave, auditsHook, isEditing = false }:
     setSaving(true);
 
     // Prepare items for saving
-    const allItems = sections.flatMap(s => s.items);
+    const allItems = sections.flatMap((s) => s.items);
     const itemsToSave = allItems
-      .filter(item => item.result !== null)
-      .map(item => ({
+      .filter((item) => item.result !== null)
+      .map((item) => ({
         checklist_item_id: item.id,
         result: item.result,
         observation: item.observation || null,
@@ -201,10 +250,10 @@ export const ChecklistForm = ({ onBack, onSave, auditsHook, isEditing = false }:
     setSaving(true);
 
     // Prepare all items to save
-    const allItems = sections.flatMap(s => s.items);
+    const allItems = sections.flatMap((s) => s.items);
     const itemsToSave = allItems
-      .filter(item => item.result !== null)
-      .map(item => ({
+      .filter((item) => item.result !== null)
+      .map((item) => ({
         checklist_item_id: item.id,
         result: item.result,
         observation: item.observation || null,
@@ -212,7 +261,7 @@ export const ChecklistForm = ({ onBack, onSave, auditsHook, isEditing = false }:
 
     // Use transactional finalize that saves items + summary + marks completed atomically
     const success = await finishAudit(currentAudit.id, summary, itemsToSave);
-    
+
     if (success) {
       onSave();
     }
@@ -244,7 +293,9 @@ export const ChecklistForm = ({ onBack, onSave, auditsHook, isEditing = false }:
           </Button>
           <div>
             <h1 className="text-3xl font-bold text-primary">Nova Auditoria</h1>
-            <p className="text-muted-foreground">Preencha os dados para iniciar</p>
+            <p className="text-muted-foreground">
+              Preencha os dados para iniciar
+            </p>
           </div>
         </div>
 
@@ -257,7 +308,9 @@ export const ChecklistForm = ({ onBack, onSave, auditsHook, isEditing = false }:
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium">Local / Estabelecimento *</label>
+              <label className="text-sm font-medium">
+                Local / Estabelecimento *
+              </label>
               <Input
                 value={locationName}
                 onChange={(e) => setLocationName(e.target.value)}
@@ -266,8 +319,8 @@ export const ChecklistForm = ({ onBack, onSave, auditsHook, isEditing = false }:
               />
             </div>
 
-            <Button 
-              onClick={handleStartAudit} 
+            <Button
+              onClick={handleStartAudit}
               className="w-full bg-gradient-primary"
               disabled={saving || loading}
             >
@@ -321,16 +374,18 @@ export const ChecklistForm = ({ onBack, onSave, auditsHook, isEditing = false }:
             Voltar
           </Button>
           <div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-primary">Checklist RDC 216/2004</h1>
+            <h1 className="text-2xl sm:text-3xl font-bold text-primary">
+              Checklist RDC 216/2004
+            </h1>
             <p className="text-muted-foreground text-sm">
-              {currentAudit.location || 'Auditoria em andamento'}
+              {currentAudit.location || "Auditoria em andamento"}
             </p>
           </div>
         </div>
         <div className="flex space-x-2 w-full sm:w-auto">
-          <Button 
-            variant="outline" 
-            onClick={handleSave} 
+          <Button
+            variant="outline"
+            onClick={handleSave}
             disabled={saving}
             className="flex-1 sm:flex-none"
           >
@@ -341,8 +396,8 @@ export const ChecklistForm = ({ onBack, onSave, auditsHook, isEditing = false }:
             )}
             Salvar
           </Button>
-          <Button 
-            onClick={handleFinish} 
+          <Button
+            onClick={handleFinish}
             className="bg-gradient-primary flex-1 sm:flex-none"
             disabled={saving}
           >
@@ -372,9 +427,7 @@ export const ChecklistForm = ({ onBack, onSave, auditsHook, isEditing = false }:
               <span className="text-destructive">
                 ✗ {calculateSummary().nao_conforme_count} não conforme
               </span>
-              <span>
-                — {calculateSummary().nao_aplicavel_count} N/A
-              </span>
+              <span>— {calculateSummary().nao_aplicavel_count} N/A</span>
             </div>
           </div>
         </CardContent>
@@ -383,13 +436,13 @@ export const ChecklistForm = ({ onBack, onSave, auditsHook, isEditing = false }:
       {/* Section Navigation */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <h2 className="text-lg sm:text-xl font-semibold text-primary">
-          {currentSectionData?.title || 'Seção'}
+          {currentSectionData?.title || "Seção"}
         </h2>
         <div className="flex space-x-2">
           <Button
             variant="outline"
             size="sm"
-            onClick={() => setCurrentSection(prev => Math.max(0, prev - 1))}
+            onClick={() => setCurrentSection((prev) => Math.max(0, prev - 1))}
             disabled={currentSection === 0}
           >
             <ArrowLeft className="w-4 h-4" />
@@ -400,7 +453,11 @@ export const ChecklistForm = ({ onBack, onSave, auditsHook, isEditing = false }:
           <Button
             variant="outline"
             size="sm"
-            onClick={() => setCurrentSection(prev => Math.min(sections.length - 1, prev + 1))}
+            onClick={() =>
+              setCurrentSection((prev) =>
+                Math.min(sections.length - 1, prev + 1)
+              )
+            }
             disabled={currentSection === sections.length - 1}
           >
             <ArrowRight className="w-4 h-4" />
@@ -411,71 +468,144 @@ export const ChecklistForm = ({ onBack, onSave, auditsHook, isEditing = false }:
       {/* Checklist Items */}
       <div className="space-y-4">
         {currentSectionItems.map((item, index) => (
-          <Card key={item.id} className="shadow-card">
+          <Card
+            key={item.id}
+            className="
+                  rounded-2xl
+                  bg-muted/50
+                  border border-primary/40
+                  shadow-sm
+                  transition
+                  hover:shadow-md"
+          >
+            {/* Header */}
             <CardHeader className="pb-2">
-              <div className="flex justify-between items-start gap-2">
+              <div className="flex items-start justify-between gap-3">
                 <div className="flex-1">
-                  <CardTitle className="text-base">Item {index + 1}</CardTitle>
-                  <CardDescription className="mt-1 text-sm">{item.description}</CardDescription>
+                  <CardTitle className="text-sm font-semibold">
+                    Item {index + 1}
+                  </CardTitle>
+                  <CardDescription className="mt-1 text-sm leading-relaxed">
+                    {item.description}
+                  </CardDescription>
                 </div>
-                <Badge className={getStatusColor(item.result)}>
-                  {item.result === "conforme" ? "Conforme" :
-                   item.result === "nao_conforme" ? "Não Conforme" :
-                   item.result === "nao_aplicavel" ? "N/A" : "Pendente"}
+
+                <Badge
+                  className={`
+              rounded-full px-3 py-1 text-xs font-medium
+              ${getStatusColor(item.result)}
+            `}
+                >
+                  {item.result === "conforme"
+                    ? "Conforme"
+                    : item.result === "nao_conforme"
+                    ? "Não Conforme"
+                    : item.result === "nao_aplicavel"
+                    ? "N/A"
+                    : "Pendente"}
                 </Badge>
               </div>
             </CardHeader>
+
+            {/* Content */}
             <CardContent className="space-y-4">
-              {/* Status Options */}
+              {/* Status Buttons */}
               <div className="grid grid-cols-3 gap-2">
+                {/* Conforme */}
                 <Button
-                  variant={item.result === "conforme" ? "default" : "outline"}
-                  size="sm"
-                  className={item.result === "conforme" ? "bg-success hover:bg-success/90" : ""}
-                  onClick={() => updateItemStatus(item.id, item.result === "conforme" ? null : "conforme")}
+                  type="button"
+                  onClick={() =>
+                    updateItemStatus(
+                      item.id,
+                      item.result === "conforme" ? null : "conforme"
+                    )
+                  }
+                  className={`
+              flex items-center justify-center gap-2 rounded-xl border text-xs font-medium transition-all
+              ${
+                item.result === "conforme"
+                  ? "bg-success text-white shadow-md ring-2 ring-success/30 scale-[1.02]"
+                  : "bg-background hover:bg-success/10 text-success border-success/40"
+              }
+            `}
                 >
-                  ✓ Conforme
+                  ✅ Conforme
                 </Button>
+
+                {/* Não Conforme */}
                 <Button
-                  variant={item.result === "nao_conforme" ? "default" : "outline"}
-                  size="sm"
-                  className={item.result === "nao_conforme" ? "bg-destructive hover:bg-destructive/90" : ""}
-                  onClick={() => updateItemStatus(item.id, item.result === "nao_conforme" ? null : "nao_conforme")}
+                  type="button"
+                  onClick={() =>
+                    updateItemStatus(
+                      item.id,
+                      item.result === "nao_conforme" ? null : "nao_conforme"
+                    )
+                  }
+                  className={`
+              flex items-center justify-center gap-2 rounded-xl border text-xs font-medium transition-all
+              ${
+                item.result === "nao_conforme"
+                  ? "bg-destructive text-white shadow-md ring-2 ring-destructive/30 scale-[1.02]"
+                  : "bg-background hover:bg-destructive/10 text-destructive border-destructive/40"
+              }
+            `}
                 >
-                  ✗ Não Conf.
+                  ❌ Não Conforme
                 </Button>
+
+                {/* Não Aplicável */}
                 <Button
-                  variant={item.result === "nao_aplicavel" ? "default" : "outline"}
-                  size="sm"
-                  className={item.result === "nao_aplicavel" ? "bg-muted text-muted-foreground" : ""}
-                  onClick={() => updateItemStatus(item.id, item.result === "nao_aplicavel" ? null : "nao_aplicavel")}
+                  type="button"
+                  onClick={() =>
+                    updateItemStatus(
+                      item.id,
+                      item.result === "nao_aplicavel" ? null : "nao_aplicavel"
+                    )
+                  }
+                  className={`
+              flex items-center justify-center gap-2 rounded-xl border text-xs font-medium transition-all
+              ${
+                item.result === "nao_aplicavel"
+                  ? "bg-muted text-foreground shadow-md ring-2 ring-muted/40 scale-[1.02]"
+                  : "bg-background hover:bg-muted/40 text-muted-foreground border-muted"
+              }
+            `}
                 >
-                  — N/A
+                  🚫 N/A
                 </Button>
               </div>
 
               {/* Observations */}
               <div className="space-y-2">
-                <label className="text-sm font-medium">Observações</label>
+                <label className="text-xs font-medium text-muted-foreground">
+                  Observações
+                </label>
                 <Textarea
                   value={item.observation}
-                  onChange={(e) => updateItemObservations(item.id, e.target.value)}
-                  placeholder="Adicione observações relevantes..."
-                  className="min-h-[60px] text-sm"
+                  onChange={(e) =>
+                    updateItemObservations(item.id, e.target.value)
+                  }
+                  placeholder="Digite observações relevantes…"
+                  className="min-h-[70px] rounded-xl text-sm focus-visible:ring-2 focus-visible:ring-primary/30"
                 />
               </div>
 
               {/* Photos */}
               {item.photos.length > 0 && (
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Fotos ({item.photos.length})</label>
+                  <label className="text-xs font-medium text-muted-foreground">
+                    Fotos ({item.photos.length})
+                  </label>
                   <div className="flex flex-wrap gap-2">
                     {item.photos.map((photo, idx) => (
-                      <div key={idx} className="relative w-16 h-16">
-                        <img 
-                          src={photo} 
-                          alt={`Foto ${idx + 1}`} 
-                          className="w-full h-full object-cover rounded-md"
+                      <div
+                        key={idx}
+                        className="relative w-16 h-16 overflow-hidden rounded-xl border"
+                      >
+                        <img
+                          src={photo}
+                          alt={`Foto ${idx + 1}`}
+                          className="w-full h-full object-cover"
                         />
                       </div>
                     ))}
@@ -483,13 +613,14 @@ export const ChecklistForm = ({ onBack, onSave, auditsHook, isEditing = false }:
                 </div>
               )}
 
-              {/* Photo Button */}
+              {/* Add Photo Button */}
               <Button
+                type="button"
                 variant="outline"
                 size="sm"
                 onClick={() => handleTakePhoto(item.id)}
-                className="w-full"
                 disabled={uploadingImage === item.id}
+                className="w-full rounded-xl border-dashed transition hover:bg-primary/5"
               >
                 {uploadingImage === item.id ? (
                   <>
@@ -512,15 +643,15 @@ export const ChecklistForm = ({ onBack, onSave, auditsHook, isEditing = false }:
       <div className="flex justify-between pt-4 pb-8">
         <Button
           variant="outline"
-          onClick={() => setCurrentSection(prev => Math.max(0, prev - 1))}
+          onClick={() => setCurrentSection((prev) => Math.max(0, prev - 1))}
           disabled={currentSection === 0}
         >
           <ArrowLeft className="w-4 h-4 mr-2" />
           Seção Anterior
         </Button>
         {currentSection === sections.length - 1 ? (
-          <Button 
-            onClick={handleFinish} 
+          <Button
+            onClick={handleFinish}
             className="bg-gradient-primary"
             disabled={saving}
           >
@@ -533,7 +664,11 @@ export const ChecklistForm = ({ onBack, onSave, auditsHook, isEditing = false }:
           </Button>
         ) : (
           <Button
-            onClick={() => setCurrentSection(prev => Math.min(sections.length - 1, prev + 1))}
+            onClick={() =>
+              setCurrentSection((prev) =>
+                Math.min(sections.length - 1, prev + 1)
+              )
+            }
           >
             Próxima Seção
             <ArrowRight className="w-4 h-4 ml-2" />

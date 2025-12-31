@@ -31,6 +31,82 @@
   </head>
 
   <body>
+    <script type="module" defer>
+  import Chatbot from "https://cdn.n8nchatui.com/v1/embed.js";
+  Chatbot.init({
+    "n8nChatUrl": "https://n8n.vennx.app/webhook/3a715bf2-80f7-4eb2-b5d9-a9c3682224bf/chat",
+    "metadata": {}, // Include any custom data to send with each message to your n8n workflow
+    "theme": {
+      "button": {
+        "backgroundColor": "#8fce50",
+        "right": 20,
+        "bottom": 20,
+        "size": 50,
+        "iconColor": "#0c08e7",
+        "customIconSrc": "https://centraldecursos.com/wp-content/uploads/2015/10/D%C3%BAvidas-Curso-de-Auto-hipnose.gif",
+        "customIconSize": 60,
+        "customIconBorderRadius": 15,
+        "autoWindowOpen": {
+          "autoOpen": false,
+          "openDelay": 2
+        },
+        "borderRadius": "circle"
+      },
+      "tooltip": {
+        "showTooltip": true,
+        "tooltipMessage": "IA BPF Check",
+        "tooltipBackgroundColor": "#0222c0",
+        "tooltipTextColor": "#fdfcfc",
+        "tooltipFontSize": 10,
+        "hideTooltipOnMobile": true
+      },
+      "allowProgrammaticMessage": false,
+      "chatWindow": {
+        "borderRadiusStyle": "rounded",
+        "avatarBorderRadius": 25,
+        "messageBorderRadius": 6,
+        "showTitle": true,
+        "title": "BPF Check",
+        "titleAvatarSrc": "https://images.vexels.com/media/users/3/192572/isolated/preview/8ba723456bb4070b984ca8d227039e65-ilustracao-de-maca.png",
+        "avatarSize": 40,
+        "welcomeMessage": "Olá! 👋\nSeja bem-vindo(a)! Estou aqui para te ajudar com o uso do aplicativo e dúvidas sobre a RDC 216/2004.",
+        "errorMessage": "entre contato com suporte",
+        "backgroundColor": "#0095de",
+        "height": 600,
+        "width": 400,
+        "fontSize": 16,
+        "starterPromptFontSize": 15,
+        "renderHTML": false,
+        "clearChatOnReload": false,
+        "showScrollbar": false,
+        "botMessage": {
+          "backgroundColor": "#ebeaea",
+          "textColor": "#0d0c0c",
+          "showAvatar": true,
+          "avatarSrc": "https://www.svgrepo.com/show/334455/bot.svg",
+          "showCopyToClipboardIcon": false
+        },
+        "userMessage": {
+          "backgroundColor": "#ebeaea",
+          "textColor": "#2d2525",
+          "showAvatar": true,
+          "avatarSrc": "https://www.svgrepo.com/show/532363/user-alt-1.svg"
+        },
+        "textInput": {
+          "placeholder": "Envie sua perguntar",
+          "backgroundColor": "#fafafa",
+          "textColor": "#1e1e1f",
+          "sendButtonColor": "#0095de",
+          "maxChars": 50,
+          "maxCharsWarningMessage": "You exceeded the characters limit. Please input less than 50 characters.",
+          "autoFocus": false,
+          "borderRadius": 6,
+          "sendButtonBorderRadius": 50
+        }
+      }
+    }
+    });
+  </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
