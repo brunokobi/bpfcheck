@@ -15,7 +15,7 @@ export const handler: Handler = async (event) => {
     }
 
     const response = await fetch(
-      "https://n8n.vennx.app/webhook/3a715bf2-80f7-4eb2-b5d9-a9c3682224bf/chat",
+      "http://44.202.156.220:5678/webhook/3a715bf2-80f7-4eb2-b5d9-a9c3682224bf/chat",
       {
         method: "POST",
         headers: {
