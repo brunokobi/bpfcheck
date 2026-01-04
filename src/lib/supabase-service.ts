@@ -541,6 +541,47 @@ export const getAuditItemImages = async (auditItemId: string): Promise<SupabaseR
   }
 };
 
+// Fetch all images for an audit (grouped by audit_item_id)
+export const getAuditImagesForAudit = async (auditId: string): Promise<SupabaseResult<Record<string, string[]>>> => {
+  try {
+    await requireAuth();
+    
+    // Get all audit_items for this audit first
+    const { data: auditItems, error: itemsError } = await supabase
+      .from('audit_items')
+      .select('id')
+      .eq('audit_id', auditId);
+
+    if (itemsError) throw itemsError;
+    if (!auditItems || auditItems.length === 0) {
+      return { data: {}, error: null };
+    }
+
+    const auditItemIds = auditItems.map(item => item.id);
+
+    // Fetch all images for these audit items
+    const { data: images, error: imagesError } = await supabase
+      .from('audit_item_images')
+      .select('audit_item_id, image_url')
+      .in('audit_item_id', auditItemIds);
+
+    if (imagesError) throw imagesError;
+
+    // Group images by audit_item_id
+    const imagesByItemId: Record<string, string[]> = {};
+    images?.forEach(img => {
+      if (!imagesByItemId[img.audit_item_id]) {
+        imagesByItemId[img.audit_item_id] = [];
+      }
+      imagesByItemId[img.audit_item_id].push(img.image_url);
+    });
+
+    return { data: imagesByItemId, error: null };
+  } catch (error) {
+    return { data: null, error: handleError(error, 'getAuditImagesForAudit') };
+  }
+};
+
 // ============ STATS ============
 
 export const getDashboardStats = async (isAdmin = false): Promise<SupabaseResult<{

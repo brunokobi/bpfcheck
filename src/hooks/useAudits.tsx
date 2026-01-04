@@ -22,6 +22,7 @@ import {
   updateAuditSummary,
   getAuditLocations,
   createAuditLocation,
+  getAuditImagesForAudit,
   AuditLocation,
 } from '@/lib/supabase-service';
 
@@ -415,19 +416,27 @@ export const useAudits = () => {
     // Load checklist items
     await loadChecklistWithItems(audit.checklist_id);
 
-    // Load existing audit items
+    // Load existing audit items and images
     const { data: existingItems } = await getAuditItems(auditId);
+    const { data: imagesByItemId } = await getAuditImagesForAudit(auditId);
+    
     if (existingItems && existingItems.length > 0) {
-      // Update sections with existing results
+      // Create a map from checklist_item_id to audit_item for quick lookup
+      const auditItemMap = new Map(existingItems.map(ei => [ei.checklist_item_id, ei]));
+      
+      // Update sections with existing results and photos
       setChecklistSections(prev => prev.map(section => ({
         ...section,
         items: section.items.map(item => {
-          const existing = existingItems.find(ei => ei.checklist_item_id === item.id);
+          const existing = auditItemMap.get(item.id);
           if (existing) {
+            // Get photos for this audit_item from the images map
+            const photos = imagesByItemId?.[existing.id] || [];
             return {
               ...item,
               result: existing.result as 'conforme' | 'nao_conforme' | 'nao_aplicavel' | null,
               observation: existing.observation || '',
+              photos,
             };
           }
           return item;
