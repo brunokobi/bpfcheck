@@ -26,7 +26,7 @@ export const SplashScreen = ({ onComplete }: SplashScreenProps) => {
     <div className="min-h-screen bg-gradient-hero flex items-center justify-center">
       <div className="text-center space-y-8 animate-fade-in">
         {/* Logo Container */}
-        <div className="w-32 h-32 bg-white rounded-3xl shadow-primary mx-auto flex items-center justify-center animate-scale-in">
+        <div className="w-32 h-32 bg-gray-100 rounded-3xl shadow-primary mx-auto flex items-center justify-center animate-scale-in">
           <img 
             src="/lovable-uploads/3a9d70a7-3c10-4786-9425-c58a607bc9aa.png" 
             alt="BPF Logo" 

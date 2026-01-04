@@ -188,7 +188,7 @@ export const ChecklistForm = ({
             ...section,
             items: section.items.map((item) =>
               item.id === activeItemId
-                ? { ...item, photos: [...item.photos, imageUrl] }
+                ? { ...item, photos: [...(item.photos || []), imageUrl] }
                 : item
             ),
           }))
@@ -591,7 +591,7 @@ export const ChecklistForm = ({
               </div>
 
               {/* Photos */}
-              {item.photos.length > 0 && (
+              {item.photos && item.photos.length > 0 && (
                 <div className="space-y-2">
                   <label className="text-xs font-medium text-muted-foreground">
                     Fotos ({item.photos.length})
