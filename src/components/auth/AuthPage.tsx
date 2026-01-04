@@ -93,13 +93,14 @@ export const AuthPage = () => {
     <div className="min-h-screen flex items-center justify-center bg-gradient-hero px-4 py-8">
       <div className="w-full max-w-md animate-scale-in">
         {/* Logo */}
-        <div className="w-20 h-20 bg-gray-100 rounded-2xl shadow-card mx-auto mb-4 flex items-center justify-center">
-  <img 
-    src="/lovable-uploads/3a9d70a7-3c10-4786-9425-c58a607bc9aa.png" 
-    alt="BPF Logo" 
-    className="w-16 h-16 object-contain"
-  />
-</div>
+        <div className="text-center mb-8">
+          <div className="w-20 h-20 bg-card  bg-gray-300 rounded-2xl shadow-card mx-auto mb-4 flex items-center justify-center">
+            <img 
+              src="/lovable-uploads/3a9d70a7-3c10-4786-9425-c58a607bc9aa.png" 
+              alt="BPF Logo" 
+              className="w-16 h-16 object-contain"
+            />
+          </div>
           <h1 className="text-3xl font-bold text-primary-foreground mb-2">BPF Check</h1>
           <p className="text-primary-foreground/80">Sistema de Auditoria Sanitária</p>
         </div>

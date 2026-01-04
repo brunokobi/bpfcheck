@@ -22,7 +22,7 @@ export const AppHeader = ({ user, onLogout }: AppHeaderProps) => {
         <div className="flex justify-between items-center py-4">
           <div className="flex items-center space-x-4">
             <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center">
+              <div className="w-10 h-10 bg-gray-300 rounded-lg flex items-center justify-center">
                 <img 
                   src="/lovable-uploads/3a9d70a7-3c10-4786-9425-c58a607bc9aa.png" 
                   alt="BPF Logo" 
