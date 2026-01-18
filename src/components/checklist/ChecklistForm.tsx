@@ -131,6 +131,13 @@ export const ChecklistForm = ({
     };
   };
 
+  const calculateSectionCompliance = (sectionItems: ChecklistItemWithResult[]) => {
+    const conforme = sectionItems.filter((i) => i.result === "conforme").length;
+    const naoConforme = sectionItems.filter((i) => i.result === "nao_conforme").length;
+    const total = conforme + naoConforme;
+    return total > 0 ? Math.round((conforme / total) * 100) : null;
+  };
+
   const updateItemStatus = (
     itemId: string,
     result: ChecklistItemWithResult["result"]
@@ -435,9 +442,27 @@ export const ChecklistForm = ({
 
       {/* Section Navigation */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <h2 className="text-lg sm:text-xl font-semibold text-primary">
-          {currentSectionData?.title || "Seção"}
-        </h2>
+        <div className="space-y-1">
+          <h2 className="text-lg sm:text-xl font-semibold text-primary">
+            {currentSectionData?.title || "Seção"}
+          </h2>
+          {(() => {
+            const sectionCompliance = calculateSectionCompliance(currentSectionItems);
+            const sectionConforme = currentSectionItems.filter((i) => i.result === "conforme").length;
+            const sectionNaoConforme = currentSectionItems.filter((i) => i.result === "nao_conforme").length;
+            return (
+              <div className="flex items-center gap-3 text-xs">
+                <span className="text-success">✓ {sectionConforme}</span>
+                <span className="text-destructive">✗ {sectionNaoConforme}</span>
+                {sectionCompliance !== null && (
+                  <span className={`font-medium ${sectionCompliance >= 80 ? 'text-success' : sectionCompliance >= 50 ? 'text-warning' : 'text-destructive'}`}>
+                    {sectionCompliance}% conformidade
+                  </span>
+                )}
+              </div>
+            );
+          })()}
+        </div>
         <div className="flex space-x-2">
           <Button
             variant="outline"
