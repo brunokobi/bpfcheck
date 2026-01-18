@@ -358,13 +358,23 @@ const generatePDF = async () => {
     for (const section of reportData.sections) {
       newPageIfNeeded();
 
+      // Calcular conformidade da seção
+      const sectionConforme = section.items.filter((i) => i.result === "conforme").length;
+      const sectionNaoConforme = section.items.filter((i) => i.result === "nao_conforme").length;
+      const sectionTotal = sectionConforme + sectionNaoConforme;
+      const sectionComplianceRate = sectionTotal > 0 ? Math.round((sectionConforme / sectionTotal) * 100) : null;
+
       // Cabeçalho da seção
       doc.setFillColor(0, 102, 153);
       doc.rect(14, yPos, pageWidth - 28, 8, "F");
       doc.setTextColor(255, 255, 255);
       doc.setFontSize(10);
       doc.setFont("helvetica", "bold");
-      doc.text(section.title, 16, yPos + 6);
+      
+      const sectionTitle = sectionComplianceRate !== null 
+        ? `${section.title} - ${sectionComplianceRate}% conformidade`
+        : section.title;
+      doc.text(sectionTitle, 16, yPos + 6);
 
       doc.setTextColor(0, 0, 0);
       yPos += 12;
@@ -596,17 +606,25 @@ const generatePDF = async () => {
       </Card>
 
       {/* Sections */}
-      {reportData.sections.map((section, sectionIndex) => (
+      {reportData.sections.map((section, sectionIndex) => {
+        const sectionConforme = section.items.filter((i) => i.result === "conforme").length;
+        const sectionNaoConforme = section.items.filter((i) => i.result === "nao_conforme").length;
+        const sectionTotal = sectionConforme + sectionNaoConforme;
+        const sectionComplianceRate = sectionTotal > 0 ? Math.round((sectionConforme / sectionTotal) * 100) : null;
+        
+        return (
         <Card key={sectionIndex} className="shadow-card">
           <CardHeader>
-            <CardTitle className="text-lg">{section.title}</CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-lg">{section.title}</CardTitle>
+              {sectionComplianceRate !== null && (
+                <span className={`text-lg font-bold ${sectionComplianceRate >= 80 ? 'text-success' : sectionComplianceRate >= 50 ? 'text-warning' : 'text-destructive'}`}>
+                  {sectionComplianceRate}%
+                </span>
+              )}
+            </div>
             <CardDescription>
-              {section.items.filter((i) => i.result === "conforme").length}{" "}
-              conforme,
-              {
-                section.items.filter((i) => i.result === "nao_conforme").length
-              }{" "}
-              não conforme
+              {sectionConforme} conforme, {sectionNaoConforme} não conforme
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -650,7 +668,8 @@ const generatePDF = async () => {
             </div>
           </CardContent>
         </Card>
-      ))}
+        );
+      })}
     </div>
   );
 };
