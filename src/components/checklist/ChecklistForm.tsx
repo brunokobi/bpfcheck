@@ -427,7 +427,7 @@ export const ChecklistForm = ({
               <span>{Math.round(calculateProgress())}% concluído</span>
             </div>
             <Progress value={calculateProgress()} className="h-2" />
-            <div className="flex justify-between text-xs text-muted-foreground pt-2">
+          <div className="flex justify-between text-xs text-muted-foreground pt-2">
               <span className="text-success">
                 ✓ {calculateSummary().conforme_count} conforme
               </span>
@@ -436,6 +436,22 @@ export const ChecklistForm = ({
               </span>
               <span>— {calculateSummary().nao_aplicavel_count} N/A</span>
             </div>
+
+            {/* Section Progress */}
+            {currentSectionData && (() => {
+              const sectionAnswered = currentSectionItems.filter(i => i.result !== null).length;
+              const sectionTotal = currentSectionItems.length;
+              const sectionProgress = sectionTotal > 0 ? (sectionAnswered / sectionTotal) * 100 : 0;
+              return (
+                <div className="space-y-2 pt-3 border-t border-border">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Progresso da Seção: <span className="font-medium text-foreground">{currentSectionData.title}</span></span>
+                    <span>{Math.round(sectionProgress)}% concluído</span>
+                  </div>
+                  <Progress value={sectionProgress} className="h-2" />
+                </div>
+              );
+            })()}
           </div>
         </CardContent>
       </Card>
