@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useCallback } from "react";
 import {
   Card,
   CardContent,
@@ -13,7 +13,6 @@ import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
 import {
   Camera,
-  Save,
   ArrowLeft,
   ArrowRight,
   Loader2,
@@ -85,10 +84,42 @@ export const ChecklistForm = ({
   const [uploadingImage, setUploadingImage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [activeItemId, setActiveItemId] = useState<string | null>(null);
+  const [autoSaving, setAutoSaving] = useState(false);
 
   // Determine if we need to show the "start audit" form
-  // Show form when: not editing AND no current audit loaded
   const showStartForm = !isEditing && !currentAudit;
+
+  // Auto-save a single item
+  const autoSaveItem = useCallback(async (itemId: string, result: string | null, observation: string | null) => {
+    if (!currentAudit || !result) return;
+
+    setAutoSaving(true);
+    try {
+      const success = await saveItems(currentAudit.id, [{
+        checklist_item_id: itemId,
+        result,
+        observation,
+      }]);
+
+      if (!success) {
+        toast({
+          title: "Falha ao salvar automaticamente",
+          description: `O item não pôde ser salvo. Verifique sua conexão e tente novamente. (item_id: ${itemId})`,
+          variant: "destructive",
+        });
+      }
+    } catch (err: any) {
+      const errorMessage = err?.message || err?.toString() || "Erro desconhecido";
+      console.error("[ChecklistForm] Auto-save error:", err);
+      toast({
+        title: "Erro no salvamento automático",
+        description: `Detalhes: ${errorMessage}`,
+        variant: "destructive",
+      });
+    } finally {
+      setAutoSaving(false);
+    }
+  }, [currentAudit, saveItems, toast]);
 
   const handleStartAudit = async () => {
     if (!locationName.trim()) {
@@ -101,11 +132,17 @@ export const ChecklistForm = ({
     }
 
     setSaving(true);
-    const audit = await startNewAudit(locationName.trim());
+    try {
+      await startNewAudit(locationName.trim());
+    } catch (err: any) {
+      const errorMessage = err?.message || err?.toString() || "Erro desconhecido";
+      toast({
+        title: "Erro ao iniciar auditoria",
+        description: `Detalhes: ${errorMessage}`,
+        variant: "destructive",
+      });
+    }
     setSaving(false);
-
-    // After starting, the currentAudit will be set in auditsHook
-    // so showStartForm will automatically become false
   };
 
   const sections = checklistSections;
@@ -138,10 +175,23 @@ export const ChecklistForm = ({
     return total > 0 ? Math.round((conforme / total) * 100) : null;
   };
 
+  const allItemsAnswered = () => {
+    const allItems = sections.flatMap((s) => s.items);
+    return allItems.length > 0 && allItems.every((item) => item.result !== null);
+  };
+
+  const getPendingCount = () => {
+    const allItems = sections.flatMap((s) => s.items);
+    return allItems.filter((item) => item.result === null).length;
+  };
+
   const updateItemStatus = (
     itemId: string,
     result: ChecklistItemWithResult["result"]
   ) => {
+    // Find the current item to get observation
+    const currentItem = sections.flatMap(s => s.items).find(i => i.id === itemId);
+    
     setChecklistSections((prev) =>
       prev.map((section) => ({
         ...section,
@@ -150,6 +200,11 @@ export const ChecklistForm = ({
         ),
       }))
     );
+
+    // Auto-save immediately
+    if (result !== null) {
+      autoSaveItem(itemId, result, currentItem?.observation || null);
+    }
   };
 
   const updateItemObservations = (itemId: string, observation: string) => {
@@ -175,7 +230,6 @@ export const ChecklistForm = ({
     setUploadingImage(activeItemId);
 
     try {
-      // Upload image with audit context
       const { data: imageUrl, error } = await uploadAuditImage(
         file,
         currentAudit.id,
@@ -185,11 +239,10 @@ export const ChecklistForm = ({
       if (error) {
         toast({
           title: "Erro ao enviar imagem",
-          description: error,
+          description: `Falha no upload: ${error}`,
           variant: "destructive",
         });
       } else if (imageUrl) {
-        // Update local state with the image
         setChecklistSections((prev) =>
           prev.map((section) => ({
             ...section,
@@ -206,46 +259,20 @@ export const ChecklistForm = ({
           description: "Foto adicionada com sucesso.",
         });
       }
-    } catch (err) {
+    } catch (err: any) {
+      const errorMessage = err?.message || err?.toString() || "Erro desconhecido ao enviar imagem";
       console.error("[ChecklistForm] Image upload error:", err);
       toast({
-        title: "Erro",
-        description: "Falha ao enviar imagem.",
+        title: "Erro no upload da imagem",
+        description: `Detalhes: ${errorMessage}`,
         variant: "destructive",
       });
     } finally {
       setUploadingImage(null);
       setActiveItemId(null);
-      // Reset file input
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
       }
-    }
-  };
-
-  const handleSave = async () => {
-    if (!currentAudit) return;
-
-    setSaving(true);
-
-    // Prepare items for saving
-    const allItems = sections.flatMap((s) => s.items);
-    const itemsToSave = allItems
-      .filter((item) => item.result !== null)
-      .map((item) => ({
-        checklist_item_id: item.id,
-        result: item.result,
-        observation: item.observation || null,
-      }));
-
-    const success = await saveItems(currentAudit.id, itemsToSave);
-    setSaving(false);
-
-    if (success) {
-      toast({
-        title: "Progresso salvo",
-        description: "Seus dados foram salvos com sucesso.",
-      });
     }
   };
 
@@ -256,7 +283,6 @@ export const ChecklistForm = ({
 
     setSaving(true);
 
-    // Prepare all items to save
     const allItems = sections.flatMap((s) => s.items);
     const itemsToSave = allItems
       .filter((item) => item.result !== null)
@@ -266,11 +292,19 @@ export const ChecklistForm = ({
         observation: item.observation || null,
       }));
 
-    // Use transactional finalize that saves items + summary + marks completed atomically
-    const success = await finishAudit(currentAudit.id, summary, itemsToSave);
+    try {
+      const success = await finishAudit(currentAudit.id, summary, itemsToSave);
 
-    if (success) {
-      onSave();
+      if (success) {
+        onSave();
+      }
+    } catch (err: any) {
+      const errorMessage = err?.message || err?.toString() || "Erro desconhecido";
+      toast({
+        title: "Erro ao finalizar auditoria",
+        description: `Detalhes: ${errorMessage}`,
+        variant: "destructive",
+      });
     }
 
     setSaving(false);
@@ -361,6 +395,9 @@ export const ChecklistForm = ({
     );
   }
 
+  const pendingCount = getPendingCount();
+  const canFinish = allItemsAnswered();
+
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Hidden file input */}
@@ -389,32 +426,31 @@ export const ChecklistForm = ({
             </p>
           </div>
         </div>
-        <div className="flex space-x-2 w-full sm:w-auto">
-          <Button
-            variant="outline"
-            onClick={handleSave}
-            disabled={saving}
-            className="flex-1 sm:flex-none"
-          >
-            {saving ? (
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-            ) : (
-              <Save className="w-4 h-4 mr-2" />
-            )}
-            Salvar
-          </Button>
-          <Button
-            onClick={handleFinish}
-            className="bg-gradient-primary flex-1 sm:flex-none"
-            disabled={saving}
-          >
-            {saving ? (
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-            ) : (
-              <CheckCircle className="w-4 h-4 mr-2" />
-            )}
-            Finalizar
-          </Button>
+        <div className="flex items-center space-x-2 w-full sm:w-auto">
+          {autoSaving && (
+            <span className="text-xs text-muted-foreground flex items-center gap-1">
+              <Loader2 className="w-3 h-3 animate-spin" />
+              Salvando...
+            </span>
+          )}
+          {canFinish ? (
+            <Button
+              onClick={handleFinish}
+              className="bg-gradient-primary flex-1 sm:flex-none"
+              disabled={saving}
+            >
+              {saving ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <CheckCircle className="w-4 h-4 mr-2" />
+              )}
+              Finalizar
+            </Button>
+          ) : (
+            <span className="text-xs text-muted-foreground">
+              {pendingCount} {pendingCount === 1 ? 'pergunta pendente' : 'perguntas pendentes'}
+            </span>
+          )}
         </div>
       </div>
 
@@ -427,7 +463,7 @@ export const ChecklistForm = ({
               <span>{Math.round(calculateProgress())}% concluído</span>
             </div>
             <Progress value={calculateProgress()} className="h-2" />
-          <div className="flex justify-between text-xs text-muted-foreground pt-2">
+            <div className="flex justify-between text-xs text-muted-foreground pt-2">
               <span className="text-success">
                 ✓ {calculateSummary().conforme_count} conforme
               </span>
@@ -561,6 +597,7 @@ export const ChecklistForm = ({
                       item.result === "conforme" ? null : "conforme"
                     )
                   }
+                  disabled={autoSaving}
                   className={`
               flex items-center justify-center gap-2 rounded-xl border text-xs font-medium transition-all
               ${
@@ -582,6 +619,7 @@ export const ChecklistForm = ({
                       item.result === "nao_conforme" ? null : "nao_conforme"
                     )
                   }
+                  disabled={autoSaving}
                   className={`
               flex items-center justify-center gap-2 rounded-xl border text-xs font-medium transition-all
               ${
@@ -603,6 +641,7 @@ export const ChecklistForm = ({
                       item.result === "nao_aplicavel" ? null : "nao_aplicavel"
                     )
                   }
+                  disabled={autoSaving}
                   className={`
               flex items-center justify-center gap-2 rounded-xl border text-xs font-medium transition-all
               ${
@@ -691,18 +730,24 @@ export const ChecklistForm = ({
           Seção Anterior
         </Button>
         {currentSection === sections.length - 1 ? (
-          <Button
-            onClick={handleFinish}
-            className="bg-gradient-primary"
-            disabled={saving}
-          >
-            {saving ? (
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-            ) : (
-              <CheckCircle className="w-4 h-4 mr-2" />
-            )}
-            Finalizar Auditoria
-          </Button>
+          canFinish ? (
+            <Button
+              onClick={handleFinish}
+              className="bg-gradient-primary"
+              disabled={saving}
+            >
+              {saving ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <CheckCircle className="w-4 h-4 mr-2" />
+              )}
+              Finalizar Auditoria
+            </Button>
+          ) : (
+            <span className="text-sm text-muted-foreground self-center">
+              {pendingCount} {pendingCount === 1 ? 'pendente' : 'pendentes'}
+            </span>
+          )
         ) : (
           <Button
             onClick={() =>
