@@ -9,9 +9,16 @@ self.addEventListener('activate', (e) => {
 });
 
 self.addEventListener('fetch', (e) => {
-  // 1. IGNORA QUALQUER REQUISIÇÃO PARA O SUPABASE
-  if (e.request.url.includes('supabase.co')) {
-    return; 
+  // 1. LISTA DE SITES E ROTAS QUE O SERVICE WORKER DEVE IGNORAR
+  const urlsToIgnore = [
+    'supabase.co',
+    'n8nchatui.com',
+    '/.netlify/functions/'
+  ];
+
+  // Verifica se a requisição faz parte da lista acima
+  if (urlsToIgnore.some(url => e.request.url.includes(url))) {
+    return; // Passa direto, não intercepta
   }
 
   // 2. IGNORA MÉTODOS QUE NÃO SEJAM GET (POST, PUT, DELETE)
@@ -19,7 +26,7 @@ self.addEventListener('fetch', (e) => {
     return;
   }
 
-  // 3. MANTÉM O SEU CÓDIGO ORIGINAL PARA O RESTO DO SITE (Imagens, HTML, CSS)
+  // 3. MANTÉM O CÓDIGO ORIGINAL PARA O RESTO DO SITE (Imagens, HTML, CSS)
   e.respondWith(
     fetch(e.request).catch(() => caches.match(e.request))
   );
