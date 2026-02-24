@@ -4,7 +4,7 @@
   "description": "Sistema especializado em auditoria e checklists de Boas Práticas de Fabricação.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#ffffff",
+  "background_color": "#d4d5d6", 
   "theme_color": "#2563eb",
   "icons": [
     {
