@@ -1,0 +1,8 @@
+[{
+      "relation": ["delegate_permission/common.handle_all_urls"],
+      "target": {
+        "namespace": "android_app",
+        "package_name": "app.netlify.bpfcheck.twa",
+        "sha256_cert_fingerprints": ["E0:9E:48:23:A9:E9:A5:B4:E1:5E:BC:A9:2C:D4:86:11:D2:F4:CF:C1:AC:CE:CD:CC:F2:FE:21:7F:3F:E3:42:C3"]
+      }
+    }]
