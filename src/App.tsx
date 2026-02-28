@@ -6,7 +6,6 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/hooks/useAuth";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
-import PoliticaPrivacidade from "./pages/PoliticaPrivacidade";
 
 const queryClient = new QueryClient();
 
@@ -20,8 +19,6 @@ const App = () => (
           <Routes>
             <Route path="/" element={<Index />} />
             <Route path="*" element={<NotFound />} />
-            {/* Adicione mais rotas conforme necessário */}
-            <Route path="/politica-privacidade" element={<PoliticaPrivacidade />} />
           </Routes>
         </BrowserRouter>
       </TooltipProvider>
