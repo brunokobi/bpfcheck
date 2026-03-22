@@ -11,8 +11,9 @@ import { useAuth } from "@/hooks/useAuth";
 import { useUserRole } from "@/hooks/useUserRole";
 import { useAudits } from "@/hooks/useAudits";
 import { useToast } from "@/hooks/use-toast";
-import { useOfflineStorage } from "@/hooks/useOfflineStorage";
-import { WifiOff, Shield } from "lucide-react";
+import { useSyncManager } from "@/hooks/useSyncManager";
+import { getSyncQueue, getOfflinePhotos } from "@/lib/offline-sync";
+import { Shield } from "lucide-react";
 
 type AppView = "splash" | "dashboard" | "checklist" | "history" | "reports" | "report-view";
 
@@ -22,13 +23,26 @@ export const BPFCheckApp = () => {
   const [selectedAuditId, setSelectedAuditId] = useState<string | null>(null);
   const [isEditingAudit, setIsEditingAudit] = useState(false);
   const [reportBackView, setReportBackView] = useState<AppView>("dashboard");
+  const [pendingSyncCount, setPendingSyncCount] = useState(0);
 
   const { user, loading, signOut } = useAuth();
   const { isAdmin, loading: roleLoading } = useUserRole();
   const auditsHook = useAudits();
   const { loadAudit, setCurrentAudit } = auditsHook;
   const { toast } = useToast();
-  const { isOnline, pendingSyncs } = useOfflineStorage();
+  const { status: connectionStatus, isOnline } = useSyncManager();
+
+  // Track pending sync count
+  useEffect(() => {
+    const updatePendingCount = async () => {
+      const queue = await getSyncQueue();
+      const photos = await getOfflinePhotos();
+      setPendingSyncCount(queue.length + photos.length);
+    };
+    updatePendingCount();
+    const interval = setInterval(updatePendingCount, 5000);
+    return () => clearInterval(interval);
+  }, [isOnline]);
 
   // Handle splash screen completion
   const handleSplashComplete = () => {
@@ -146,19 +160,6 @@ export const BPFCheckApp = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Offline indicator */}
-      {!isOnline && (
-        <div className="bg-warning text-warning-foreground px-4 py-2 flex items-center justify-center gap-2 text-sm">
-          <WifiOff className="w-4 h-4" />
-          <span>Modo offline</span>
-          {pendingSyncs.length > 0 && (
-            <span className="bg-warning-foreground/20 px-2 py-0.5 rounded-full text-xs">
-              {pendingSyncs.length} pendente{pendingSyncs.length > 1 ? 's' : ''}
-            </span>
-          )}
-        </div>
-      )}
-
       {/* Admin indicator */}
       {isAdmin && (
         <div className="bg-primary text-primary-foreground px-4 py-1 flex items-center justify-center gap-2 text-sm">
@@ -167,7 +168,12 @@ export const BPFCheckApp = () => {
         </div>
       )}
 
-      <AppHeader user={userProfile} onLogout={handleLogout} />
+      <AppHeader
+        user={userProfile}
+        onLogout={handleLogout}
+        connectionStatus={connectionStatus}
+        pendingSyncCount={pendingSyncCount}
+      />
       
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {currentView === "dashboard" && (
