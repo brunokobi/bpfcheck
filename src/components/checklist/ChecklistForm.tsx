@@ -96,17 +96,32 @@ export const ChecklistForm = ({
 
     setAutoSaving(true);
     try {
-      const success = await saveItems(currentAudit.id, [{
-        checklist_item_id: itemId,
-        result,
-        observation,
-      }]);
+      if (navigator.onLine) {
+        const success = await saveItems(currentAudit.id, [{
+          checklist_item_id: itemId,
+          result,
+          observation,
+        }]);
 
-      if (!success) {
-        toast({
-          title: "Falha ao salvar automaticamente",
-          description: `O item não pôde ser salvo. Verifique sua conexão e tente novamente. (item_id: ${itemId})`,
-          variant: "destructive",
+        if (!success) {
+          toast({
+            title: "Falha ao salvar automaticamente",
+            description: `O item não pôde ser salvo. Verifique sua conexão e tente novamente. (item_id: ${itemId})`,
+            variant: "destructive",
+          });
+        }
+      } else {
+        // Offline: queue for later sync
+        await addToSyncQueue({
+          type: 'save_items',
+          payload: {
+            auditId: currentAudit.id,
+            items: [{
+              checklist_item_id: itemId,
+              result,
+              observation,
+            }],
+          },
         });
       }
     } catch (err: any) {
