@@ -21,6 +21,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { SectionWithItems, ChecklistItemWithResult } from "@/hooks/useAudits";
 import { uploadAuditImage } from "@/lib/supabase-service";
+import { saveOfflinePhoto, blobToObjectUrl, addToSyncQueue } from "@/lib/offline-sync";
 
 // Define the type for auditsHook
 type AuditsHook = {
