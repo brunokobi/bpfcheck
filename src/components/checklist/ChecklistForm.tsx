@@ -21,6 +21,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { SectionWithItems, ChecklistItemWithResult } from "@/hooks/useAudits";
 import { uploadAuditImage } from "@/lib/supabase-service";
+import { saveOfflinePhoto, blobToObjectUrl, addToSyncQueue } from "@/lib/offline-sync";
 
 // Define the type for auditsHook
 type AuditsHook = {
@@ -95,17 +96,32 @@ export const ChecklistForm = ({
 
     setAutoSaving(true);
     try {
-      const success = await saveItems(currentAudit.id, [{
-        checklist_item_id: itemId,
-        result,
-        observation,
-      }]);
+      if (navigator.onLine) {
+        const success = await saveItems(currentAudit.id, [{
+          checklist_item_id: itemId,
+          result,
+          observation,
+        }]);
 
-      if (!success) {
-        toast({
-          title: "Falha ao salvar automaticamente",
-          description: `O item não pôde ser salvo. Verifique sua conexão e tente novamente. (item_id: ${itemId})`,
-          variant: "destructive",
+        if (!success) {
+          toast({
+            title: "Falha ao salvar automaticamente",
+            description: `O item não pôde ser salvo. Verifique sua conexão e tente novamente. (item_id: ${itemId})`,
+            variant: "destructive",
+          });
+        }
+      } else {
+        // Offline: queue for later sync
+        await addToSyncQueue({
+          type: 'save_items',
+          payload: {
+            auditId: currentAudit.id,
+            items: [{
+              checklist_item_id: itemId,
+              result,
+              observation,
+            }],
+          },
         });
       }
     } catch (err: any) {
@@ -230,33 +246,61 @@ export const ChecklistForm = ({
     setUploadingImage(activeItemId);
 
     try {
-      const { data: imageUrl, error } = await uploadAuditImage(
-        file,
-        currentAudit.id,
-        activeItemId
-      );
+      if (navigator.onLine) {
+        // Online: upload directly
+        const { data: imageUrl, error } = await uploadAuditImage(
+          file,
+          currentAudit.id,
+          activeItemId
+        );
 
-      if (error) {
-        toast({
-          title: "Erro ao enviar imagem",
-          description: `Falha no upload: ${error}`,
-          variant: "destructive",
+        if (error) {
+          toast({
+            title: "Erro ao enviar imagem",
+            description: `Falha no upload: ${error}`,
+            variant: "destructive",
+          });
+        } else if (imageUrl) {
+          setChecklistSections((prev) =>
+            prev.map((section) => ({
+              ...section,
+              items: section.items.map((item) =>
+                item.id === activeItemId
+                  ? { ...item, photos: [...(item.photos || []), imageUrl] }
+                  : item
+              ),
+            }))
+          );
+          toast({
+            title: "Imagem enviada",
+            description: "Foto adicionada com sucesso.",
+          });
+        }
+      } else {
+        // Offline: save blob locally
+        const blob = new Blob([await file.arrayBuffer()], { type: file.type });
+        const offlinePhoto = await saveOfflinePhoto({
+          auditId: currentAudit.id,
+          checklistItemId: activeItemId,
+          blob,
+          mimeType: file.type,
         });
-      } else if (imageUrl) {
+
+        const localUrl = blobToObjectUrl(offlinePhoto.blob);
         setChecklistSections((prev) =>
           prev.map((section) => ({
             ...section,
             items: section.items.map((item) =>
               item.id === activeItemId
-                ? { ...item, photos: [...(item.photos || []), imageUrl] }
+                ? { ...item, photos: [...(item.photos || []), localUrl] }
                 : item
             ),
           }))
         );
 
         toast({
-          title: "Imagem enviada",
-          description: "Foto adicionada com sucesso.",
+          title: "Foto salva offline",
+          description: "Será enviada ao servidor quando a conexão voltar.",
         });
       }
     } catch (err: any) {
