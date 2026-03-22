@@ -29,6 +29,14 @@
     <meta name="twitter:description" content="Sistema profissional para auditorias sanitárias baseado na RDC 216/2004" />
     <meta name="twitter:image" content="/lovable-uploads/3a9d70a7-3c10-4786-9425-c58a607bc9aa.png" />
      <link rel="icon" href="/favicon.png" type="image/x-icon">
+    <link rel="manifest" href="/manifest.json">
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js');
+    });
+  }
+</script>
   </head>
 
   <body>    

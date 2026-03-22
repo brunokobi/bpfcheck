@@ -6,8 +6,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ConnectionStatus } from "./ConnectionStatus";
-import { ConnectionStatus as StatusType } from "@/hooks/useOnlineStatus";
 
 interface AppHeaderProps {
   user?: {
@@ -15,11 +13,9 @@ interface AppHeaderProps {
     email: string;
   };
   onLogout?: () => void;
-  connectionStatus?: StatusType;
-  pendingSyncCount?: number;
 }
 
-export const AppHeader = ({ user, onLogout, connectionStatus = 'online', pendingSyncCount = 0 }: AppHeaderProps) => {
+export const AppHeader = ({ user, onLogout }: AppHeaderProps) => {
   return (
     <header className="bg-gradient-primary shadow-primary border-b">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -38,7 +34,6 @@ export const AppHeader = ({ user, onLogout, connectionStatus = 'online', pending
                 <p className="text-xs text-primary-foreground/80">Sistema de Auditoria Sanitária</p>
               </div>
             </div>
-            <ConnectionStatus status={connectionStatus} pendingCount={pendingSyncCount} />
           </div>
 
           {user && (
