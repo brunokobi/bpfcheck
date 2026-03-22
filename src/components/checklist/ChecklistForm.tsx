@@ -231,33 +231,61 @@ export const ChecklistForm = ({
     setUploadingImage(activeItemId);
 
     try {
-      const { data: imageUrl, error } = await uploadAuditImage(
-        file,
-        currentAudit.id,
-        activeItemId
-      );
+      if (navigator.onLine) {
+        // Online: upload directly
+        const { data: imageUrl, error } = await uploadAuditImage(
+          file,
+          currentAudit.id,
+          activeItemId
+        );
 
-      if (error) {
-        toast({
-          title: "Erro ao enviar imagem",
-          description: `Falha no upload: ${error}`,
-          variant: "destructive",
+        if (error) {
+          toast({
+            title: "Erro ao enviar imagem",
+            description: `Falha no upload: ${error}`,
+            variant: "destructive",
+          });
+        } else if (imageUrl) {
+          setChecklistSections((prev) =>
+            prev.map((section) => ({
+              ...section,
+              items: section.items.map((item) =>
+                item.id === activeItemId
+                  ? { ...item, photos: [...(item.photos || []), imageUrl] }
+                  : item
+              ),
+            }))
+          );
+          toast({
+            title: "Imagem enviada",
+            description: "Foto adicionada com sucesso.",
+          });
+        }
+      } else {
+        // Offline: save blob locally
+        const blob = new Blob([await file.arrayBuffer()], { type: file.type });
+        const offlinePhoto = await saveOfflinePhoto({
+          auditId: currentAudit.id,
+          checklistItemId: activeItemId,
+          blob,
+          mimeType: file.type,
         });
-      } else if (imageUrl) {
+
+        const localUrl = blobToObjectUrl(offlinePhoto.blob);
         setChecklistSections((prev) =>
           prev.map((section) => ({
             ...section,
             items: section.items.map((item) =>
               item.id === activeItemId
-                ? { ...item, photos: [...(item.photos || []), imageUrl] }
+                ? { ...item, photos: [...(item.photos || []), localUrl] }
                 : item
             ),
           }))
         );
 
         toast({
-          title: "Imagem enviada",
-          description: "Foto adicionada com sucesso.",
+          title: "Foto salva offline",
+          description: "Será enviada ao servidor quando a conexão voltar.",
         });
       }
     } catch (err: any) {
