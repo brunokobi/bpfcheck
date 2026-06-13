@@ -100,15 +100,9 @@ export const useOfflineStorage = () => {
       data,
       timestamp: Date.now(),
     };
-    
+
     await store.put(syncItem);
     setPendingSyncs(prev => [...prev, syncItem]);
-    
-    toast({
-      title: 'Salvo offline',
-      description: 'Será sincronizado quando a conexão voltar.',
-    });
-    
     return syncItem;
   }, [initDB, toast]);
 

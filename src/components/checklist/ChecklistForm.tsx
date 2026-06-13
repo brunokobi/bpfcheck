@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import {
   Card,
   CardContent,
@@ -17,12 +17,13 @@ import {
   ArrowRight,
   Loader2,
   CheckCircle,
+  WifiOff,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { SectionWithItems, ChecklistItemWithResult } from "@/hooks/useAudits";
 import { uploadAuditImage } from "@/lib/supabase-service";
+import { db } from "./db";
 
-// Define the type for auditsHook
 type AuditsHook = {
   currentAudit: any;
   checklistSections: SectionWithItems[];
@@ -84,16 +85,113 @@ export const ChecklistForm = ({
   const [uploadingImage, setUploadingImage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [activeItemId, setActiveItemId] = useState<string | null>(null);
-  const [autoSaving, setAutoSaving] = useState(false);
+  // Per-item saving state: only blocks the item being saved
+  const [savingItems, setSavingItems] = useState<Set<string>>(new Set());
+  const [isOffline, setIsOffline] = useState(!navigator.onLine);
 
-  // Determine if we need to show the "start audit" form
+  // Refs for stable access inside async callbacks/timeouts
+  const blobUrlsRef = useRef<string[]>([]);
+  const sectionsRef = useRef(checklistSections);
+  const currentAuditRef = useRef(currentAudit);
+  const pendingObservationSaves = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const prevOfflineRef = useRef<boolean | null>(null);
+
+  useEffect(() => { sectionsRef.current = checklistSections; }, [checklistSections]);
+  useEffect(() => { currentAuditRef.current = currentAudit; }, [currentAudit]);
+
+  // Revoke all blob URLs and clear pending debounces on unmount
+  useEffect(() => {
+    return () => {
+      blobUrlsRef.current.forEach(url => URL.revokeObjectURL(url));
+      pendingObservationSaves.current.forEach(timeout => clearTimeout(timeout));
+    };
+  }, []);
+
+  useEffect(() => {
+    const handleOnline = () => setIsOffline(false);
+    const handleOffline = () => setIsOffline(true);
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, []);
+
   const showStartForm = !isEditing && !currentAudit;
 
-  // Auto-save a single item
-  const autoSaveItem = useCallback(async (itemId: string, result: string | null, observation: string | null) => {
+  // Process the offline sync queue when connectivity is restored
+  const processSyncQueue = useCallback(async () => {
+    const pendingItems = await db.syncQueue
+      .where("status")
+      .anyOf(["pending", "processing"])
+      .toArray();
+    if (pendingItems.length === 0) return;
+
+    let synced = 0;
+    for (const item of pendingItems) {
+      await db.syncQueue.update(item.id!, { status: "processing" });
+      try {
+        if (item.action === "UPLOAD_IMAGE") {
+          const { auditId, itemId, file, localUrl } = item.payload as {
+            auditId: string;
+            itemId: string;
+            file: File;
+            localUrl: string;
+          };
+          const { data: imageUrl, error } = await uploadAuditImage(file, auditId, itemId);
+          if (error) throw new Error(typeof error === "string" ? error : "Upload failed");
+
+          if (imageUrl && localUrl) {
+            URL.revokeObjectURL(localUrl);
+            blobUrlsRef.current = blobUrlsRef.current.filter(u => u !== localUrl);
+            setChecklistSections(prev =>
+              prev.map(section => ({
+                ...section,
+                items: section.items.map(i => {
+                  if (i.id !== itemId) return i;
+                  return { ...i, photos: (i.photos || []).map(p => p === localUrl ? imageUrl : p) };
+                }),
+              }))
+            );
+          }
+
+          await db.syncQueue.delete(item.id!);
+          synced++;
+        }
+      } catch {
+        await db.syncQueue.update(item.id!, {
+          status: "failed",
+          retryCount: (item.retryCount || 0) + 1,
+        });
+      }
+    }
+
+    if (synced > 0) {
+      toast({
+        title: "Sincronização concluída",
+        description: `${synced} ${synced === 1 ? "item enviado" : "itens enviados"} para a nuvem.`,
+      });
+    }
+  }, [setChecklistSections, toast]);
+
+  // Trigger sync on mount (if already online) and on every offline→online transition
+  useEffect(() => {
+    const wasOffline = prevOfflineRef.current;
+    prevOfflineRef.current = isOffline;
+    if (!isOffline && (wasOffline === true || wasOffline === null)) {
+      processSyncQueue();
+    }
+  }, [isOffline, processSyncQueue]);
+
+  const autoSaveItem = useCallback(async (
+    itemId: string,
+    result: string | null,
+    observation: string | null,
+  ) => {
     if (!currentAudit || !result) return;
 
-    setAutoSaving(true);
+    setSavingItems(prev => new Set(prev).add(itemId));
     try {
       const success = await saveItems(currentAudit.id, [{
         checklist_item_id: itemId,
@@ -103,9 +201,12 @@ export const ChecklistForm = ({
 
       if (!success) {
         toast({
-          title: "Falha ao salvar automaticamente",
-          description: `O item não pôde ser salvo. Verifique sua conexão e tente novamente. (item_id: ${itemId})`,
-          variant: "destructive",
+          title: isOffline ? "Salvo localmente" : "Falha ao salvar automaticamente",
+          description: isOffline
+            ? "O item será sincronizado quando a conexão voltar."
+            : `O item não pôde ser salvo. (item_id: ${itemId})`,
+          // No destructive variant for offline local saves — those are expected
+          variant: isOffline ? undefined : "destructive",
         });
       }
     } catch (err: any) {
@@ -117,9 +218,13 @@ export const ChecklistForm = ({
         variant: "destructive",
       });
     } finally {
-      setAutoSaving(false);
+      setSavingItems(prev => {
+        const next = new Set(prev);
+        next.delete(itemId);
+        return next;
+      });
     }
-  }, [currentAudit, saveItems, toast]);
+  }, [currentAudit, saveItems, toast, isOffline]);
 
   const handleStartAudit = async () => {
     if (!locationName.trim()) {
@@ -149,74 +254,89 @@ export const ChecklistForm = ({
   const currentSectionData = sections[currentSection];
   const currentSectionItems = currentSectionData?.items || [];
 
-  const calculateProgress = () => {
-    const allItems = sections.flatMap((s) => s.items);
-    const completedItems = allItems.filter(
-      (item) => item.result !== null
-    ).length;
-    return allItems.length > 0 ? (completedItems / allItems.length) * 100 : 0;
-  };
-
-  const calculateSummary = () => {
-    const allItems = sections.flatMap((s) => s.items);
-    return {
-      conforme_count: allItems.filter((i) => i.result === "conforme").length,
-      nao_conforme_count: allItems.filter((i) => i.result === "nao_conforme")
-        .length,
-      nao_aplicavel_count: allItems.filter((i) => i.result === "nao_aplicavel")
-        .length,
-    };
-  };
+  // Memoize expensive flatMap operations — each previously recalculated independently on every render
+  const allItems = useMemo(() => sections.flatMap(s => s.items), [sections]);
+  const progress = useMemo(
+    () => allItems.length > 0 ? (allItems.filter(i => i.result !== null).length / allItems.length) * 100 : 0,
+    [allItems],
+  );
+  const summary = useMemo(() => ({
+    conforme_count: allItems.filter(i => i.result === "conforme").length,
+    nao_conforme_count: allItems.filter(i => i.result === "nao_conforme").length,
+    nao_aplicavel_count: allItems.filter(i => i.result === "nao_aplicavel").length,
+  }), [allItems]);
+  const pendingCount = useMemo(() => allItems.filter(i => i.result === null).length, [allItems]);
+  const canFinish = useMemo(
+    () => allItems.length > 0 && allItems.every(i => i.result !== null),
+    [allItems],
+  );
 
   const calculateSectionCompliance = (sectionItems: ChecklistItemWithResult[]) => {
-    const conforme = sectionItems.filter((i) => i.result === "conforme").length;
-    const naoConforme = sectionItems.filter((i) => i.result === "nao_conforme").length;
+    const conforme = sectionItems.filter(i => i.result === "conforme").length;
+    const naoConforme = sectionItems.filter(i => i.result === "nao_conforme").length;
     const total = conforme + naoConforme;
     return total > 0 ? Math.round((conforme / total) * 100) : null;
   };
 
-  const allItemsAnswered = () => {
-    const allItems = sections.flatMap((s) => s.items);
-    return allItems.length > 0 && allItems.every((item) => item.result !== null);
-  };
-
-  const getPendingCount = () => {
-    const allItems = sections.flatMap((s) => s.items);
-    return allItems.filter((item) => item.result === null).length;
-  };
-
   const updateItemStatus = (
     itemId: string,
-    result: ChecklistItemWithResult["result"]
+    result: ChecklistItemWithResult["result"],
   ) => {
-    // Find the current item to get observation
     const currentItem = sections.flatMap(s => s.items).find(i => i.id === itemId);
-    
-    setChecklistSections((prev) =>
-      prev.map((section) => ({
+
+    setChecklistSections(prev =>
+      prev.map(section => ({
         ...section,
-        items: section.items.map((item) =>
+        items: section.items.map(item =>
           item.id === itemId ? { ...item, result } : item
         ),
       }))
     );
 
-    // Auto-save immediately
     if (result !== null) {
       autoSaveItem(itemId, result, currentItem?.observation || null);
     }
   };
 
-  const updateItemObservations = (itemId: string, observation: string) => {
-    setChecklistSections((prev) =>
-      prev.map((section) => ({
+  // Debounced: updates local state immediately, auto-saves 1.5s after last keystroke
+  const updateItemObservations = useCallback((itemId: string, observation: string) => {
+    setChecklistSections(prev =>
+      prev.map(section => ({
         ...section,
-        items: section.items.map((item) =>
+        items: section.items.map(item =>
           item.id === itemId ? { ...item, observation } : item
         ),
       }))
     );
-  };
+
+    const existing = pendingObservationSaves.current.get(itemId);
+    if (existing) clearTimeout(existing);
+
+    const timeout = setTimeout(async () => {
+      pendingObservationSaves.current.delete(itemId);
+      const audit = currentAuditRef.current;
+      if (!audit) return;
+      const currentItem = sectionsRef.current.flatMap(s => s.items).find(i => i.id === itemId);
+      if (!currentItem?.result) return;
+
+      setSavingItems(prev => new Set(prev).add(itemId));
+      try {
+        await saveItems(audit.id, [{
+          checklist_item_id: itemId,
+          result: currentItem.result,
+          observation,
+        }]);
+      } finally {
+        setSavingItems(prev => {
+          const next = new Set(prev);
+          next.delete(itemId);
+          return next;
+        });
+      }
+    }, 1500);
+
+    pendingObservationSaves.current.set(itemId, timeout);
+  }, [setChecklistSections, saveItems]);
 
   const handleTakePhoto = (itemId: string) => {
     setActiveItemId(itemId);
@@ -230,10 +350,40 @@ export const ChecklistForm = ({
     setUploadingImage(activeItemId);
 
     try {
+      if (isOffline) {
+        const localUrl = URL.createObjectURL(file);
+        blobUrlsRef.current.push(localUrl);
+
+        await db.syncQueue.add({
+          action: "UPLOAD_IMAGE",
+          // localUrl stored so the sync worker can swap it for the real URL later
+          payload: { auditId: currentAudit.id, itemId: activeItemId, file, localUrl },
+          createdAt: new Date().toISOString(),
+          status: "pending",
+        });
+
+        setChecklistSections(prev =>
+          prev.map(section => ({
+            ...section,
+            items: section.items.map(item =>
+              item.id === activeItemId
+                ? { ...item, photos: [...(item.photos || []), localUrl] }
+                : item
+            ),
+          }))
+        );
+
+        toast({
+          title: "Foto salva no dispositivo",
+          description: "Será enviada para a nuvem quando a conexão voltar.",
+        });
+        return;
+      }
+
       const { data: imageUrl, error } = await uploadAuditImage(
         file,
         currentAudit.id,
-        activeItemId
+        activeItemId,
       );
 
       if (error) {
@@ -243,17 +393,16 @@ export const ChecklistForm = ({
           variant: "destructive",
         });
       } else if (imageUrl) {
-        setChecklistSections((prev) =>
-          prev.map((section) => ({
+        setChecklistSections(prev =>
+          prev.map(section => ({
             ...section,
-            items: section.items.map((item) =>
+            items: section.items.map(item =>
               item.id === activeItemId
                 ? { ...item, photos: [...(item.photos || []), imageUrl] }
                 : item
             ),
           }))
         );
-
         toast({
           title: "Imagem enviada",
           description: "Foto adicionada com sucesso.",
@@ -270,23 +419,17 @@ export const ChecklistForm = ({
     } finally {
       setUploadingImage(null);
       setActiveItemId(null);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
+      if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
 
   const handleFinish = async () => {
     if (!currentAudit) return;
 
-    const summary = calculateSummary();
-
     setSaving(true);
-
-    const allItems = sections.flatMap((s) => s.items);
     const itemsToSave = allItems
-      .filter((item) => item.result !== null)
-      .map((item) => ({
+      .filter(item => item.result !== null)
+      .map(item => ({
         checklist_item_id: item.id,
         result: item.result,
         observation: item.observation || null,
@@ -294,10 +437,7 @@ export const ChecklistForm = ({
 
     try {
       const success = await finishAudit(currentAudit.id, summary, itemsToSave);
-
-      if (success) {
-        onSave();
-      }
+      if (success) onSave();
     } catch (err: any) {
       const errorMessage = err?.message || err?.toString() || "Erro desconhecido";
       toast({
@@ -312,18 +452,13 @@ export const ChecklistForm = ({
 
   const getStatusColor = (result: ChecklistItemWithResult["result"]) => {
     switch (result) {
-      case "conforme":
-        return "bg-success text-success-foreground";
-      case "nao_conforme":
-        return "bg-destructive text-destructive-foreground";
-      case "nao_aplicavel":
-        return "bg-muted text-muted-foreground";
-      default:
-        return "bg-secondary text-secondary-foreground";
+      case "conforme": return "bg-success text-success-foreground";
+      case "nao_conforme": return "bg-destructive text-destructive-foreground";
+      case "nao_aplicavel": return "bg-muted text-muted-foreground";
+      default: return "bg-secondary text-secondary-foreground";
     }
   };
 
-  // Show audit start form
   if (showStartForm) {
     return (
       <div className="space-y-6 animate-fade-in">
@@ -383,7 +518,6 @@ export const ChecklistForm = ({
     );
   }
 
-  // Show loading while fetching checklist
   if (loading || sections.length === 0) {
     return (
       <div className="flex justify-center items-center py-20">
@@ -395,8 +529,13 @@ export const ChecklistForm = ({
     );
   }
 
-  const pendingCount = getPendingCount();
-  const canFinish = allItemsAnswered();
+  // Section-level derived values (extracted from inline IIFEs)
+  const sectionAnswered = currentSectionItems.filter(i => i.result !== null).length;
+  const sectionTotal = currentSectionItems.length;
+  const sectionProgress = sectionTotal > 0 ? (sectionAnswered / sectionTotal) * 100 : 0;
+  const sectionConforme = currentSectionItems.filter(i => i.result === "conforme").length;
+  const sectionNaoConforme = currentSectionItems.filter(i => i.result === "nao_conforme").length;
+  const sectionCompliance = calculateSectionCompliance(currentSectionItems);
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -417,16 +556,23 @@ export const ChecklistForm = ({
             Voltar
           </Button>
           <div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-primary">
-              Checklist RDC 216/2004
-            </h1>
+            <div className="flex items-center gap-3">
+              <h1 className="text-2xl sm:text-3xl font-bold text-primary">
+                Checklist RDC 216/2004
+              </h1>
+              {isOffline && (
+                <Badge variant="destructive" className="flex items-center gap-1 px-2 py-0.5 animate-pulse">
+                  <WifiOff className="w-3 h-3" /> Offline
+                </Badge>
+              )}
+            </div>
             <p className="text-muted-foreground text-sm">
               {currentAudit.location || "Auditoria em andamento"}
             </p>
           </div>
         </div>
         <div className="flex items-center space-x-2 w-full sm:w-auto">
-          {autoSaving && (
+          {savingItems.size > 0 && (
             <span className="text-xs text-muted-foreground flex items-center gap-1">
               <Loader2 className="w-3 h-3 animate-spin" />
               Salvando...
@@ -447,7 +593,7 @@ export const ChecklistForm = ({
             </Button>
           ) : (
             <span className="text-xs text-muted-foreground">
-              {pendingCount} {pendingCount === 1 ? 'pergunta pendente' : 'perguntas pendentes'}
+              {pendingCount} {pendingCount === 1 ? "pergunta pendente" : "perguntas pendentes"}
             </span>
           )}
         </div>
@@ -459,34 +605,31 @@ export const ChecklistForm = ({
           <div className="space-y-2">
             <div className="flex justify-between text-sm">
               <span>Progresso do Checklist</span>
-              <span>{Math.round(calculateProgress())}% concluído</span>
+              <span>{Math.round(progress)}% concluído</span>
             </div>
-            <Progress value={calculateProgress()} className="h-2" />
+            <Progress value={progress} className="h-2" />
             <div className="flex justify-between text-xs text-muted-foreground pt-2">
               <span className="text-success">
-                ✓ {calculateSummary().conforme_count} conforme
+                ✓ {summary.conforme_count} conforme
               </span>
               <span className="text-destructive">
-                ✗ {calculateSummary().nao_conforme_count} não conforme
+                ✗ {summary.nao_conforme_count} não conforme
               </span>
-              <span>— {calculateSummary().nao_aplicavel_count} N/A</span>
+              <span>— {summary.nao_aplicavel_count} N/A</span>
             </div>
 
-            {/* Section Progress */}
-            {currentSectionData && (() => {
-              const sectionAnswered = currentSectionItems.filter(i => i.result !== null).length;
-              const sectionTotal = currentSectionItems.length;
-              const sectionProgress = sectionTotal > 0 ? (sectionAnswered / sectionTotal) * 100 : 0;
-              return (
-                <div className="space-y-2 pt-3 border-t border-border">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Progresso da Seção: <span className="font-medium text-foreground">{currentSectionData.title}</span></span>
-                    <span>{Math.round(sectionProgress)}% concluído</span>
-                  </div>
-                  <Progress value={sectionProgress} className="h-2" />
+            {currentSectionData && (
+              <div className="space-y-2 pt-3 border-t border-border">
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">
+                    Progresso da Seção:{" "}
+                    <span className="font-medium text-foreground">{currentSectionData.title}</span>
+                  </span>
+                  <span>{Math.round(sectionProgress)}% concluído</span>
                 </div>
-              );
-            })()}
+                <Progress value={sectionProgress} className="h-2" />
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -497,28 +640,27 @@ export const ChecklistForm = ({
           <h2 className="text-lg sm:text-xl font-semibold text-primary">
             {currentSectionData?.title || "Seção"}
           </h2>
-          {(() => {
-            const sectionCompliance = calculateSectionCompliance(currentSectionItems);
-            const sectionConforme = currentSectionItems.filter((i) => i.result === "conforme").length;
-            const sectionNaoConforme = currentSectionItems.filter((i) => i.result === "nao_conforme").length;
-            return (
-              <div className="flex items-center gap-3 text-xs">
-                <span className="text-success">✓ {sectionConforme}</span>
-                <span className="text-destructive">✗ {sectionNaoConforme}</span>
-                {sectionCompliance !== null && (
-                  <span className={`font-medium ${sectionCompliance >= 80 ? 'text-success' : sectionCompliance >= 50 ? 'text-warning' : 'text-destructive'}`}>
-                    {sectionCompliance}% conformidade
-                  </span>
-                )}
-              </div>
-            );
-          })()}
+          <div className="flex items-center gap-3 text-xs">
+            <span className="text-success">✓ {sectionConforme}</span>
+            <span className="text-destructive">✗ {sectionNaoConforme}</span>
+            {sectionCompliance !== null && (
+              <span className={`font-medium ${
+                sectionCompliance >= 80
+                  ? "text-success"
+                  : sectionCompliance >= 50
+                  ? "text-warning"
+                  : "text-destructive"
+              }`}>
+                {sectionCompliance}% conformidade
+              </span>
+            )}
+          </div>
         </div>
         <div className="flex space-x-2">
           <Button
             variant="outline"
             size="sm"
-            onClick={() => setCurrentSection((prev) => Math.max(0, prev - 1))}
+            onClick={() => setCurrentSection(prev => Math.max(0, prev - 1))}
             disabled={currentSection === 0}
           >
             <ArrowLeft className="w-4 h-4" />
@@ -529,11 +671,7 @@ export const ChecklistForm = ({
           <Button
             variant="outline"
             size="sm"
-            onClick={() =>
-              setCurrentSection((prev) =>
-                Math.min(sections.length - 1, prev + 1)
-              )
-            }
+            onClick={() => setCurrentSection(prev => Math.min(sections.length - 1, prev + 1))}
             disabled={currentSection === sections.length - 1}
           >
             <ArrowRight className="w-4 h-4" />
@@ -546,13 +684,7 @@ export const ChecklistForm = ({
         {currentSectionItems.map((item, index) => (
           <Card
             key={item.id}
-            className="
-                  rounded-2xl
-                  bg-muted/50
-                  border border-primary/40
-                  shadow-sm
-                  transition
-                  hover:shadow-md"
+            className="rounded-2xl bg-muted/50 border border-primary/40 shadow-sm transition hover:shadow-md"
           >
             {/* Header */}
             <CardHeader className="pb-2">
@@ -567,10 +699,7 @@ export const ChecklistForm = ({
                 </div>
 
                 <Badge
-                  className={`
-              rounded-full px-3 py-1 text-xs font-medium
-              ${getStatusColor(item.result)}
-            `}
+                  className={`rounded-full px-3 py-1 text-xs font-medium ${getStatusColor(item.result)}`}
                 >
                   {item.result === "conforme"
                     ? "Conforme"
@@ -587,68 +716,47 @@ export const ChecklistForm = ({
             <CardContent className="space-y-4">
               {/* Status Buttons */}
               <div className="grid grid-cols-3 gap-2">
-                {/* Conforme */}
                 <Button
                   type="button"
                   onClick={() =>
-                    updateItemStatus(
-                      item.id,
-                      item.result === "conforme" ? null : "conforme"
-                    )
+                    updateItemStatus(item.id, item.result === "conforme" ? null : "conforme")
                   }
-                  disabled={autoSaving}
-                  className={`
-              flex items-center justify-center gap-2 rounded-xl border text-xs font-medium transition-all
-              ${
-                item.result === "conforme"
-                  ? "bg-success text-white shadow-md ring-2 ring-success/30 scale-[1.02]"
-                  : "bg-background hover:bg-success/10 text-success border-success/40"
-              }
-            `}
+                  disabled={savingItems.has(item.id)}
+                  className={`flex items-center justify-center gap-2 rounded-xl border text-xs font-medium transition-all ${
+                    item.result === "conforme"
+                      ? "bg-success text-white shadow-md ring-2 ring-success/30 scale-[1.02]"
+                      : "bg-background hover:bg-success/10 text-success border-success/40"
+                  }`}
                 >
                   ✅ Conforme
                 </Button>
 
-                {/* Não Conforme */}
                 <Button
                   type="button"
                   onClick={() =>
-                    updateItemStatus(
-                      item.id,
-                      item.result === "nao_conforme" ? null : "nao_conforme"
-                    )
+                    updateItemStatus(item.id, item.result === "nao_conforme" ? null : "nao_conforme")
                   }
-                  disabled={autoSaving}
-                  className={`
-              flex items-center justify-center gap-2 rounded-xl border text-xs font-medium transition-all
-              ${
-                item.result === "nao_conforme"
-                  ? "bg-destructive text-white shadow-md ring-2 ring-destructive/30 scale-[1.02]"
-                  : "bg-background hover:bg-destructive/10 text-destructive border-destructive/40"
-              }
-            `}
+                  disabled={savingItems.has(item.id)}
+                  className={`flex items-center justify-center gap-2 rounded-xl border text-xs font-medium transition-all ${
+                    item.result === "nao_conforme"
+                      ? "bg-destructive text-white shadow-md ring-2 ring-destructive/30 scale-[1.02]"
+                      : "bg-background hover:bg-destructive/10 text-destructive border-destructive/40"
+                  }`}
                 >
                   ❌ Não Conforme
                 </Button>
 
-                {/* Não Aplicável */}
                 <Button
                   type="button"
                   onClick={() =>
-                    updateItemStatus(
-                      item.id,
-                      item.result === "nao_aplicavel" ? null : "nao_aplicavel"
-                    )
+                    updateItemStatus(item.id, item.result === "nao_aplicavel" ? null : "nao_aplicavel")
                   }
-                  disabled={autoSaving}
-                  className={`
-              flex items-center justify-center gap-2 rounded-xl border text-xs font-medium transition-all
-              ${
-                item.result === "nao_aplicavel"
-                  ? "bg-muted text-foreground shadow-md ring-2 ring-muted/40 scale-[1.02]"
-                  : "bg-background hover:bg-muted/40 text-muted-foreground border-muted"
-              }
-            `}
+                  disabled={savingItems.has(item.id)}
+                  className={`flex items-center justify-center gap-2 rounded-xl border text-xs font-medium transition-all ${
+                    item.result === "nao_aplicavel"
+                      ? "bg-muted text-foreground shadow-md ring-2 ring-muted/40 scale-[1.02]"
+                      : "bg-background hover:bg-muted/40 text-muted-foreground border-muted"
+                  }`}
                 >
                   🚫 N/A
                 </Button>
@@ -660,10 +768,8 @@ export const ChecklistForm = ({
                   Observações
                 </label>
                 <Textarea
-                  value={item.observation}
-                  onChange={(e) =>
-                    updateItemObservations(item.id, e.target.value)
-                  }
+                  value={item.observation ?? ""}
+                  onChange={(e) => updateItemObservations(item.id, e.target.value)}
                   placeholder="Digite observações relevantes…"
                   className="min-h-[70px] rounded-xl text-sm focus-visible:ring-2 focus-visible:ring-primary/30"
                 />
@@ -722,7 +828,7 @@ export const ChecklistForm = ({
       <div className="flex justify-between pt-4 pb-8">
         <Button
           variant="outline"
-          onClick={() => setCurrentSection((prev) => Math.max(0, prev - 1))}
+          onClick={() => setCurrentSection(prev => Math.max(0, prev - 1))}
           disabled={currentSection === 0}
         >
           <ArrowLeft className="w-4 h-4 mr-2" />
@@ -744,16 +850,12 @@ export const ChecklistForm = ({
             </Button>
           ) : (
             <span className="text-sm text-muted-foreground self-center">
-              {pendingCount} {pendingCount === 1 ? 'pendente' : 'pendentes'}
+              {pendingCount} {pendingCount === 1 ? "pendente" : "pendentes"}
             </span>
           )
         ) : (
           <Button
-            onClick={() =>
-              setCurrentSection((prev) =>
-                Math.min(sections.length - 1, prev + 1)
-              )
-            }
+            onClick={() => setCurrentSection(prev => Math.min(sections.length - 1, prev + 1))}
           >
             Próxima Seção
             <ArrowRight className="w-4 h-4 ml-2" />
