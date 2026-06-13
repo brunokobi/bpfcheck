@@ -73,6 +73,121 @@ Acesse em `http://localhost:5173`.
 
 ---
 
+## Banco de Dados — Supabase
+
+O backend utiliza **PostgreSQL via Supabase** com 9 tabelas. Autenticação gerenciada pelo Supabase Auth (tabela `auth.users`).
+
+```
+profiles ──────────────── auth.users (1:1)
+user_roles ─────────────── profiles
+checklists
+  └── checklist_sections
+        └── checklist_items
+audits ──────────────────── checklists + audit_locations
+  └── audit_items ──────── checklist_items
+        └── audit_item_images
+audit_summary ───────────── audits (1:1)
+audit_locations ─────────── profiles
+```
+
+### Tabelas
+
+**`profiles`** — Perfil do usuário
+| Coluna | Tipo | Obrigatório |
+|---|---|---|
+| `id` | uuid (PK) | Sim |
+| `name` | text | — |
+| `email` | text | — |
+| `created_at` | timestamptz | — |
+
+**`user_roles`** — Controle de acesso (Administrador / Usuário)
+| Coluna | Tipo | Obrigatório |
+|---|---|---|
+| `id` | uuid (PK) | Sim |
+| `user_id` | uuid (FK → profiles) | Sim |
+| `role` | enum | Sim |
+| `created_at` | timestamptz | — |
+
+**`checklists`** — Checklists de auditoria
+| Coluna | Tipo | Obrigatório |
+|---|---|---|
+| `id` | uuid (PK) | Sim |
+| `user_id` | uuid | — |
+| `name` | text | Sim |
+| `description` | text | — |
+| `is_default` | boolean | — |
+| `created_at` | timestamptz | — |
+
+**`checklist_sections`** — Seções de um checklist
+| Coluna | Tipo | Obrigatório |
+|---|---|---|
+| `id` | uuid (PK) | Sim |
+| `checklist_id` | uuid (FK → checklists) | Sim |
+| `title` | text | Sim |
+| `order_index` | integer | Sim |
+| `created_at` | timestamptz | — |
+
+**`checklist_items`** — Itens de cada seção
+| Coluna | Tipo | Obrigatório |
+|---|---|---|
+| `id` | uuid (PK) | Sim |
+| `section_id` | uuid (FK → checklist_sections) | Sim |
+| `description` | text | Sim |
+| `order_index` | integer | Sim |
+| `created_at` | timestamptz | — |
+
+**`audit_locations`** — Estabelecimentos cadastrados
+| Coluna | Tipo | Obrigatório |
+|---|---|---|
+| `id` | uuid (PK) | Sim |
+| `user_id` | uuid (FK → profiles) | Sim |
+| `name` | text | Sim |
+| `address` | text | — |
+| `city` | text | — |
+| `state` | text | — |
+| `created_at` | timestamptz | — |
+
+**`audits`** — Registros de auditoria
+| Coluna | Tipo | Obrigatório |
+|---|---|---|
+| `id` | uuid (PK) | Sim |
+| `user_id` | uuid (FK → profiles) | Sim |
+| `checklist_id` | uuid (FK → checklists) | Sim |
+| `location_id` | uuid (FK → audit_locations) | — |
+| `location` | text | — |
+| `status` | text | — |
+| `started_at` | timestamptz | — |
+| `finished_at` | timestamptz | — |
+
+**`audit_items`** — Respostas por item de checklist
+| Coluna | Tipo | Obrigatório |
+|---|---|---|
+| `id` | uuid (PK) | Sim |
+| `audit_id` | uuid (FK → audits) | Sim |
+| `checklist_item_id` | uuid (FK → checklist_items) | Sim |
+| `result` | text (`conforme` \| `nao_conforme` \| `nao_aplicavel`) | — |
+| `observation` | text | — |
+| `updated_at` | timestamptz | — |
+
+**`audit_item_images`** — Fotos de evidência por item
+| Coluna | Tipo | Obrigatório |
+|---|---|---|
+| `id` | uuid (PK) | Sim |
+| `audit_item_id` | uuid (FK → audit_items) | Sim |
+| `image_url` | text | Sim |
+| `created_at` | timestamptz | — |
+
+**`audit_summary`** — Totais de conformidade por auditoria
+| Coluna | Tipo | Obrigatório |
+|---|---|---|
+| `audit_id` | uuid (PK/FK → audits) | Sim |
+| `conforme_count` | integer | — |
+| `nao_conforme_count` | integer | — |
+| `nao_aplicavel_count` | integer | — |
+| `last_updated` | timestamptz | — |
+
+---
+
 ## Agente de IA — n8n Multi-Agent
 
 O BPF Check conta com um assistente inteligente construído no **n8n** com arquitetura **multi-agente**, alimentado pelo **Google Gemini**. O agente responde dúvidas sobre o uso do app e sobre a **RDC 216/2004** diretamente pelo chat.
