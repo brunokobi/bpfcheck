@@ -7,9 +7,10 @@
 ![Tailwind CSS](https://img.shields.io/badge/Tailwind-3-06B6D4?logo=tailwindcss&logoColor=white)
 ![Supabase](https://img.shields.io/badge/Supabase-Backend-3ECF8E?logo=supabase&logoColor=white)
 ![PWA](https://img.shields.io/badge/PWA-Offline--First-5A0FC8?logo=pwa&logoColor=white)
+[![Google Play](https://img.shields.io/badge/Google_Play-Disponível-414141?logo=google-play&logoColor=white)](https://play.google.com/store/apps/details?id=app.netlify.bpfcheck.twa)
 ![Deploy](https://img.shields.io/badge/Deploy-Netlify-00C7B7?logo=netlify&logoColor=white)
 
-![BPF Check na Google Play Store](public/screenshot-playstore.png)
+[![BPF Check na Google Play Store](public/screenshot-playstore.png)](https://play.google.com/store/apps/details?id=app.netlify.bpfcheck.twa)
 
 O **BPF Check** é uma aplicação web progressiva (PWA) desenvolvida para facilitar o gerenciamento e a execução de auditorias sanitárias em estabelecimentos de alimentação, baseada nas normas da **RDC 216/2004** da ANVISA.
 
