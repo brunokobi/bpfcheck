@@ -9,6 +9,8 @@
 ![PWA](https://img.shields.io/badge/PWA-Offline--First-5A0FC8?logo=pwa&logoColor=white)
 ![Deploy](https://img.shields.io/badge/Deploy-Netlify-00C7B7?logo=netlify&logoColor=white)
 
+![BPF Check na Google Play Store](public/screenshot-playstore.png)
+
 O **BPF Check** é uma aplicação web progressiva (PWA) desenvolvida para facilitar o gerenciamento e a execução de auditorias sanitárias em estabelecimentos de alimentação, baseada nas normas da **RDC 216/2004** da ANVISA.
 
 O sistema suporta funcionamento **offline-first** — auditorias podem ser realizadas sem conexão com a internet e sincronizadas automaticamente ao reconectar.
