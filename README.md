@@ -236,6 +236,24 @@ Todos os agentes compartilham a mesma **Buffer Window Memory**, mantendo o conte
 
 ---
 
+## Trabalho Acadêmico
+
+O BPF Check foi desenvolvido como **Trabalho de Conclusão de Curso** da Pós-Graduação *lato sensu* em **Controle de Qualidade e Segurança de Alimentos** do Instituto Federal do Espírito Santo — **Ifes Campus Piúma** (2025).
+
+> **KOBI, Rafaela Soares Souza; RIBEIRO, Monique Lopes.** Desenvolvimento de aplicativo móvel para auditoria de boas práticas em serviço de alimentação. *Trabalho de Conclusão de Curso (Pós-Graduação lato sensu em Controle de Qualidade e Segurança de Alimentos)* — Instituto Federal do Espírito Santo, Campus Piúma, 2025.
+
+### Resumo
+
+A segurança dos alimentos é um tema central em saúde pública, cuja garantia depende da implementação eficaz das Boas Práticas de Fabricação (BPF). O monitoramento tradicional baseado em formulários de papel apresenta limitações que dificultam a rastreabilidade, atrasam a geração de laudos e reduzem a agilidade na correção de não conformidades.
+
+O BPF Check digitaliza os requisitos da **RDC nº 216/2004** em listas de verificação interativas com registro fotográfico em tempo real, integrando um **assistente de Inteligência Artificial** para suporte técnico durante inspeções em campo.
+
+A validação empírica com profissionais de Nutrição pelo protocolo **System Usability Scale (SUS)** atestou escore de **81,4 pontos** — classificação de excelência em usabilidade.
+
+**Palavras-chave:** Boas Práticas de Fabricação · RDC nº 216/2004 · Segurança alimentar · Auditoria sanitária · Aplicativo móvel
+
+---
+
 ## Créditos
 
 Desenvolvido por **Bruno Kobi** para **Rafaela Soares Souza Kobi**.
