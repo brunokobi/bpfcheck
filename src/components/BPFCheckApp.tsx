@@ -25,7 +25,7 @@ export const BPFCheckApp = () => {
 
   const { user, loading, signOut } = useAuth();
   const { isAdmin, loading: roleLoading } = useUserRole();
-  const auditsHook = useAudits();
+  const auditsHook = useAudits(!!user);
   const { loadAudit, setCurrentAudit } = auditsHook;
   const { toast } = useToast();
   const { isOnline, pendingSyncs } = useOfflineStorage();

@@ -49,7 +49,7 @@ interface DashboardStats {
   complianceRate: number;
 }
 
-export const useAudits = () => {
+export const useAudits = (isAuthenticated = false) => {
   const { toast } = useToast();
   const { isOnline, saveForSync, saveOfflineAudit, getOfflineAudits } = useOfflineStorage();
 
@@ -413,13 +413,13 @@ export const useAudits = () => {
   }, [loadChecklistWithItems, toast]);
 
   useEffect(() => {
-    if (isOnline) {
+    if (isOnline && isAuthenticated) {
       fetchStats();
       fetchRecentAudits();
       fetchLocations();
       loadDefaultChecklist();
     }
-  }, [isOnline, fetchStats, fetchRecentAudits, fetchLocations, loadDefaultChecklist]);
+  }, [isOnline, isAuthenticated, fetchStats, fetchRecentAudits, fetchLocations, loadDefaultChecklist]);
 
   return {
     loading,
