@@ -73,6 +73,54 @@ Acesse em `http://localhost:5173`.
 
 ---
 
+## Agente de IA — n8n Multi-Agent
+
+O BPF Check conta com um assistente inteligente construído no **n8n** com arquitetura **multi-agente**, alimentado pelo **Google Gemini**. O agente responde dúvidas sobre o uso do app e sobre a **RDC 216/2004** diretamente pelo chat.
+
+![Fluxo do agente n8n](public/agent-flow.png)
+
+### Como funciona
+
+A mensagem do usuário passa por um pipeline de 4 etapas:
+
+```
+Chat Trigger → Orquestrador → Parsear Rota → Roteador → Agente Especialista
+```
+
+**1. Orquestrador**
+Recebe a mensagem e classifica a intenção, retornando um JSON de roteamento. Não responde diretamente — apenas decide para qual agente encaminhar.
+
+**2. Parsear Rota**
+Nó de código JavaScript que extrai a rota do JSON gerado pelo orquestrador, com fallback para `APP_USO` em caso de erro de parse.
+
+**3. Roteador de Agentes**
+Switch que direciona para um dos 8 agentes especialistas conforme a intenção detectada.
+
+**4. Agentes Especialistas**
+
+| Agente | Responsabilidade |
+|---|---|
+| **App — Uso** | Dúvidas sobre login, checklists, relatórios, perfis e uso geral do app. Também recebe saudações e mensagens genéricas |
+| **RDC — Geral** | Fundamentos da RDC 216/2004: objetivo, âmbito, definições e contexto legal |
+| **RDC — Estrutura** | Seção 4.1: edificação, instalações, equipamentos, móveis e utensílios |
+| **RDC — Higiene** | Seções 4.2, 4.5, 4.6: manipuladores, controle de pragas e resíduos |
+| **RDC — Alimentos** | Seções 4.7–4.10: matérias-primas, preparo, armazenamento e exposição |
+| **RDC — Documentação** | Seções 4.11–4.12: Manual de Boas Práticas, POPs e responsabilidade |
+| **Sobre a Autora** | Informações sobre Rafaela Soares Souza Kobi, o TCC e o Guia Alimentar BR |
+| **Fora de Escopo** | Responde educadamente que o assunto está fora do escopo do assistente |
+
+### Memória compartilhada
+
+Todos os agentes compartilham a mesma **Buffer Window Memory**, mantendo o contexto da conversa independentemente de quantas trocas de agente ocorrerem na sessão.
+
+### Tecnologias do agente
+
+- **n8n** — Orquestração do fluxo
+- **Google Gemini** — LLM para o orquestrador e todos os agentes especialistas
+- **LangChain nodes** — Integração de agentes, memória e LLM no n8n
+
+---
+
 ## Créditos
 
 Desenvolvido por **Bruno Kobi** para **Rafaela Soares Souza Kobi**.
