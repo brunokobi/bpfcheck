@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { useOfflineStorage } from '@/hooks/useOfflineStorage';
+import { db } from '@/components/checklist/db';
 import {
   Audit,
   AuditItem,
@@ -65,7 +66,6 @@ export const useAudits = () => {
   const [defaultChecklist, setDefaultChecklist] = useState<Checklist | null>(null);
   const [checklistSections, setChecklistSections] = useState<SectionWithItems[]>([]);
 
-  // Fetch dashboard stats
   const fetchStats = useCallback(async () => {
     if (!isOnline) {
       console.log('[Offline] Using cached stats');
@@ -75,23 +75,15 @@ export const useAudits = () => {
     const { data, error } = await getDashboardStats();
     if (error) {
       console.error('[useAudits] Failed to fetch stats:', error);
-      toast({
-        title: 'Erro ao carregar estatísticas',
-        description: error,
-        variant: 'destructive',
-      });
+      toast({ title: 'Erro ao carregar estatísticas', description: error, variant: 'destructive' });
       return;
     }
 
-    if (data) {
-      setStats(data);
-    }
+    if (data) setStats(data);
   }, [isOnline, toast]);
 
-  // Fetch recent audits
   const fetchRecentAudits = useCallback(async (limit = 10) => {
     if (!isOnline) {
-      console.log('[Offline] Using cached audits');
       const offlineAudits = await getOfflineAudits();
       setAudits(offlineAudits as unknown as AuditWithDetails[]);
       return;
@@ -103,20 +95,13 @@ export const useAudits = () => {
 
     if (error) {
       console.error('[useAudits] Failed to fetch audits:', error);
-      toast({
-        title: 'Erro ao carregar auditorias',
-        description: error,
-        variant: 'destructive',
-      });
+      toast({ title: 'Erro ao carregar auditorias', description: error, variant: 'destructive' });
       return;
     }
 
-    if (data) {
-      setAudits(data);
-    }
+    if (data) setAudits(data);
   }, [isOnline, toast, getOfflineAudits]);
 
-  // Fetch all audits
   const fetchAllAudits = useCallback(async () => {
     setLoading(true);
     const { data, error } = await getAudits();
@@ -127,52 +112,84 @@ export const useAudits = () => {
       return;
     }
 
-    if (data) {
-      setAudits(data);
-    }
+    if (data) setAudits(data);
   }, []);
 
-  // Fetch locations
   const fetchLocations = useCallback(async () => {
     const { data, error } = await getAuditLocations();
     if (error) {
       console.error('[useAudits] Failed to fetch locations:', error);
       return;
     }
-    if (data) {
-      setLocations(data);
-    }
+    if (data) setLocations(data);
   }, []);
 
-  // Load default checklist
+  // Loads the default checklist — caches in Dexie so it's available offline
   const loadDefaultChecklist = useCallback(async (): Promise<Checklist | null> => {
-    const { data, error } = await getDefaultChecklist();
-    if (error) {
-      console.error('[useAudits] Failed to load default checklist:', error);
+    const CACHE_KEY = 'defaultChecklist';
+
+    if (!isOnline) {
+      const cached = await db.cache.get(CACHE_KEY);
+      if (cached) {
+        setDefaultChecklist(cached.data as Checklist);
+        return cached.data as Checklist;
+      }
       toast({
-        title: 'Erro ao carregar checklist',
-        description: error,
+        title: 'Sem conexão',
+        description: 'Abra o app online pelo menos uma vez para usar offline.',
         variant: 'destructive',
       });
       return null;
     }
-    
+
+    const { data, error } = await getDefaultChecklist();
+
+    if (error) {
+      // Network error — try cache as fallback
+      const cached = await db.cache.get(CACHE_KEY);
+      if (cached) {
+        setDefaultChecklist(cached.data as Checklist);
+        return cached.data as Checklist;
+      }
+      toast({ title: 'Erro ao carregar checklist', description: error, variant: 'destructive' });
+      return null;
+    }
+
     if (data) {
       setDefaultChecklist(data);
+      await db.cache.put({ key: CACHE_KEY, data, cachedAt: new Date().toISOString() });
     }
     return data;
-  }, [toast]);
+  }, [toast, isOnline]);
 
-  // Load checklist with sections and items
+  // Loads checklist sections+items — caches in Dexie so they're available offline
   const loadChecklistWithItems = useCallback(async (checklistId: string): Promise<SectionWithItems[]> => {
-    const { data, error } = await getChecklistWithSections(checklistId);
-    if (error) {
-      console.error('[useAudits] Failed to load checklist items:', error);
+    const CACHE_KEY = `checklist_${checklistId}`;
+
+    if (!isOnline) {
+      const cached = await db.cache.get(CACHE_KEY);
+      if (cached) {
+        setChecklistSections(cached.data as SectionWithItems[]);
+        return cached.data as SectionWithItems[];
+      }
       toast({
-        title: 'Erro ao carregar itens do checklist',
-        description: error,
+        title: 'Sem conexão',
+        description: 'Abra o app online pelo menos uma vez para usar offline.',
         variant: 'destructive',
       });
+      return [];
+    }
+
+    const { data, error } = await getChecklistWithSections(checklistId);
+
+    if (error) {
+      // Network error — try cache as fallback
+      const cached = await db.cache.get(CACHE_KEY);
+      if (cached) {
+        setChecklistSections(cached.data as SectionWithItems[]);
+        return cached.data as SectionWithItems[];
+      }
+      toast({ title: 'Erro ao carregar itens do checklist', description: error, variant: 'destructive' });
       return [];
     }
 
@@ -187,16 +204,16 @@ export const useAudits = () => {
         })),
       }));
       setChecklistSections(sectionsWithResults);
+      // Cache sections without results (results are per-audit, not per-checklist)
+      await db.cache.put({ key: CACHE_KEY, data: sectionsWithResults, cachedAt: new Date().toISOString() });
       return sectionsWithResults;
     }
     return [];
-  }, [toast]);
+  }, [toast, isOnline]);
 
-  // Start new audit using transactional RPC
   const startNewAudit = useCallback(async (locationName?: string, locationId?: string): Promise<Audit | null> => {
     setLoading(true);
 
-    // Load default checklist first
     let checklist = defaultChecklist;
     if (!checklist) {
       checklist = await loadDefaultChecklist();
@@ -204,16 +221,11 @@ export const useAudits = () => {
 
     if (!checklist) {
       setLoading(false);
-      toast({
-        title: 'Erro',
-        description: 'Nenhum checklist padrão encontrado.',
-        variant: 'destructive',
-      });
+      toast({ title: 'Erro', description: 'Nenhum checklist padrão encontrado.', variant: 'destructive' });
       return null;
     }
 
     if (isOnline) {
-      // Use transactional RPC to create audit + location atomically
       const { data: auditId, error } = await saveAuditTransaction({
         checklistId: checklist.id,
         location: locationName || null,
@@ -232,7 +244,6 @@ export const useAudits = () => {
         return null;
       }
 
-      // Fetch the created audit
       const { data: audit, error: fetchError } = await getAuditById(auditId);
       setLoading(false);
 
@@ -247,13 +258,10 @@ export const useAudits = () => {
 
       setCurrentAudit(audit);
       await loadChecklistWithItems(checklist.id);
-      toast({
-        title: 'Auditoria iniciada',
-        description: 'Nova auditoria criada com sucesso.',
-      });
+      toast({ title: 'Auditoria iniciada', description: 'Nova auditoria criada com sucesso.' });
       return audit;
     } else {
-      // Offline mode - create local audit
+      // Offline: create a local audit with a temporary ID
       const offlineAudit: Record<string, unknown> = {
         id: `offline_${Date.now()}`,
         checklist_id: checklist.id,
@@ -265,55 +273,42 @@ export const useAudits = () => {
       };
 
       await saveOfflineAudit(offlineAudit);
-      await saveForSync('audits', 'insert', offlineAudit as Record<string, unknown>);
-      
+      await saveForSync('audits', 'insert', offlineAudit);
+
       setLoading(false);
       setCurrentAudit(offlineAudit as unknown as Audit);
       await loadChecklistWithItems(checklist.id);
-      
+
       toast({
         title: 'Auditoria criada offline',
         description: 'Será sincronizada quando voltar online.',
       });
-      
+
       return offlineAudit as unknown as Audit;
     }
   }, [defaultChecklist, loadDefaultChecklist, loadChecklistWithItems, isOnline, saveOfflineAudit, saveForSync, toast]);
 
-  // Save audit items
   const saveItems = useCallback(async (
-    auditId: string, 
+    auditId: string,
     items: { checklist_item_id: string; result: string | null; observation: string | null }[]
   ): Promise<boolean> => {
     if (!isOnline) {
-      // Save offline
+      // Queue each item for sync — no toast here, ChecklistForm handles its own feedback
       for (const item of items) {
-        await saveForSync('audit_items', 'insert', {
-          audit_id: auditId,
-          ...item,
-        });
+        await saveForSync('audit_items', 'insert', { audit_id: auditId, ...item });
       }
-      toast({
-        title: 'Itens salvos offline',
-        description: 'Serão sincronizados quando voltar online.',
-      });
       return true;
     }
 
     const { error } = await saveAuditItems(auditId, items);
     if (error) {
-      toast({
-        title: 'Erro ao salvar itens',
-        description: error,
-        variant: 'destructive',
-      });
+      toast({ title: 'Erro ao salvar itens', description: error, variant: 'destructive' });
       return false;
     }
 
     return true;
   }, [isOnline, saveForSync, toast]);
 
-  // Complete audit with summary using transactional RPC
   const finishAudit = useCallback(async (
     auditId: string,
     summary: { conforme_count: number; nao_conforme_count: number; nao_aplicavel_count: number },
@@ -325,10 +320,7 @@ export const useAudits = () => {
         status: 'completed',
         finished_at: new Date().toISOString(),
       });
-      await saveForSync('audit_summary', 'insert', {
-        audit_id: auditId,
-        ...summary,
-      });
+      await saveForSync('audit_summary', 'insert', { audit_id: auditId, ...summary });
       toast({
         title: 'Auditoria finalizada offline',
         description: 'Será sincronizada quando voltar online.',
@@ -336,15 +328,9 @@ export const useAudits = () => {
       return true;
     }
 
-    // Use transactional RPC that saves items + summary + marks completed atomically
-    const { data, error } = await saveAuditTransaction({
-      auditId,
-      items,
-      finalize: true,
-    });
+    const { data, error } = await saveAuditTransaction({ auditId, items, finalize: true });
 
     if (error) {
-      // Parse special error messages
       if (error.includes('checklist_incomplete')) {
         const match = error.match(/checklist_incomplete:(\d+)\/(\d+)/);
         const answered = match ? match[1] : '?';
@@ -355,40 +341,25 @@ export const useAudits = () => {
           variant: 'destructive',
         });
       } else {
-        toast({
-          title: 'Erro ao finalizar auditoria',
-          description: error,
-          variant: 'destructive',
-        });
+        toast({ title: 'Erro ao finalizar auditoria', description: error, variant: 'destructive' });
       }
       return false;
     }
 
-    toast({
-      title: 'Auditoria concluída',
-      description: 'Auditoria finalizada com sucesso!',
-    });
-
-    // Refresh data
+    toast({ title: 'Auditoria concluída', description: 'Auditoria finalizada com sucesso!' });
     await fetchStats();
     await fetchRecentAudits();
-
     setCurrentAudit(null);
     return true;
   }, [isOnline, saveForSync, fetchStats, fetchRecentAudits, toast]);
 
-  // Add new location
   const addLocation = useCallback(async (name: string, address?: string, city?: string, state?: string): Promise<AuditLocation | null> => {
     const { data, error } = await createAuditLocation({ name, address: address || null, city: city || null, state: state || null });
     if (error) {
-      toast({
-        title: 'Erro ao criar local',
-        description: error,
-        variant: 'destructive',
-      });
+      toast({ title: 'Erro ao criar local', description: error, variant: 'destructive' });
       return null;
     }
-    
+
     if (data) {
       setLocations(prev => [...prev, data]);
       return data;
@@ -396,10 +367,9 @@ export const useAudits = () => {
     return null;
   }, [toast]);
 
-  // Load audit for editing
   const loadAudit = useCallback(async (auditId: string): Promise<boolean> => {
     setLoading(true);
-    
+
     const { data: audit, error } = await getAuditById(auditId);
     if (error || !audit) {
       setLoading(false);
@@ -412,25 +382,19 @@ export const useAudits = () => {
     }
 
     setCurrentAudit(audit);
-
-    // Load checklist items
     await loadChecklistWithItems(audit.checklist_id);
 
-    // Load existing audit items and images
     const { data: existingItems } = await getAuditItems(auditId);
     const { data: imagesByItemId } = await getAuditImagesForAudit(auditId);
-    
+
     if (existingItems && existingItems.length > 0) {
-      // Create a map from checklist_item_id to audit_item for quick lookup
       const auditItemMap = new Map(existingItems.map(ei => [ei.checklist_item_id, ei]));
-      
-      // Update sections with existing results and photos
+
       setChecklistSections(prev => prev.map(section => ({
         ...section,
         items: section.items.map(item => {
           const existing = auditItemMap.get(item.id);
           if (existing) {
-            // Get photos for this audit_item from the images map
             const photos = imagesByItemId?.[existing.id] || [];
             return {
               ...item,
@@ -448,7 +412,6 @@ export const useAudits = () => {
     return true;
   }, [loadChecklistWithItems, toast]);
 
-  // Initialize data
   useEffect(() => {
     if (isOnline) {
       fetchStats();
@@ -459,7 +422,6 @@ export const useAudits = () => {
   }, [isOnline, fetchStats, fetchRecentAudits, fetchLocations, loadDefaultChecklist]);
 
   return {
-    // State
     loading,
     audits,
     currentAudit,
@@ -467,8 +429,6 @@ export const useAudits = () => {
     locations,
     defaultChecklist,
     checklistSections,
-    
-    // Actions
     fetchStats,
     fetchRecentAudits,
     fetchAllAudits,
