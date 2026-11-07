@@ -6,6 +6,7 @@ do app poder reenviar qualquer operação sem duplicar dados.
 from __future__ import annotations
 
 import hashlib
+import logging
 import hmac
 import os
 import time
@@ -24,6 +25,8 @@ from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 from pydantic import BaseModel, EmailStr, Field
 
+from app import supabase_import as sb
+
 DATABASE_URL = os.environ["DATABASE_URL"]
 JWT_SECRET = os.environ["JWT_SECRET"]
 PUBLIC_URL = os.environ.get("PUBLIC_URL", "").rstrip("/")
@@ -36,6 +39,8 @@ MAX_IMAGE_BYTES = 15 * 1024 * 1024
 SIGNED_URL_DAYS = 7
 ALLOWED_IMAGE_TYPES = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}
 
+logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+
 pool = ConnectionPool(DATABASE_URL, min_size=1, max_size=10, open=False,
                       kwargs={"row_factory": dict_row, "autocommit": False})
 
@@ -47,6 +52,14 @@ async def lifespan(_: FastAPI):
     with pool.connection() as conn:
         conn.execute(schema)
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    # Checklist RDC 216 vem do Supabase antigo (tabelas públicas) enquanto o banco estiver vazio.
+    if sb.ENABLED:
+        try:
+            with pool.connection() as conn:
+                if not conn.execute("SELECT 1 FROM checklist_items LIMIT 1").fetchone():
+                    sb.import_public_checklists(conn)
+        except Exception:  # noqa: BLE001 — a API sobe mesmo se o Supabase estiver fora
+            sb.log.exception("falha ao importar checklist do Supabase")
     yield
     pool.close()
 
@@ -116,7 +129,7 @@ def signup(body: SignupIn):
         if exists:
             raise HTTPException(409, "email_taken")
         row = conn.execute(
-            "INSERT INTO users (email, name, password_hash) VALUES (%s, %s, %s) RETURNING *",
+            "INSERT INTO users (email, name, password_hash, supabase_imported) VALUES (%s, %s, %s, true) RETURNING *",
             (body.email.lower(), body.name.strip(), hash_password(body.password)),
         ).fetchone()
     return {"token": make_token(str(row["id"])), "user": public_user(row)}
@@ -145,11 +158,71 @@ def login(body: LoginIn):
         raise HTTPException(429, "too_many_attempts")
     with pool.connection() as conn:
         row = conn.execute("SELECT * FROM users WHERE lower(email) = lower(%s)", (email,)).fetchone()
-    if not row or not check_password(body.password, row["password_hash"]):
-        _login_failures.setdefault(email, []).append(time.time())
-        raise HTTPException(401, "invalid_credentials")
-    _login_failures.pop(email, None)
-    return {"token": make_token(str(row["id"])), "user": public_user(row)}
+    if row and row["password_hash"] != sb.UNMIGRATED_HASH and check_password(body.password, row["password_hash"]):
+        _login_failures.pop(email, None)
+        if sb.ENABLED and not row["supabase_imported"]:
+            _import_supabase_data(email, body.password)  # tentativa anterior falhou: tenta de novo
+        return {"token": make_token(str(row["id"])), "user": public_user(row)}
+    if sb.ENABLED and (not row or row["password_hash"] == sb.UNMIGRATED_HASH):
+        migrated = _migrate_from_supabase(email, body.password)
+        if migrated:
+            _login_failures.pop(email, None)
+            return {"token": make_token(str(migrated["id"])), "user": public_user(migrated)}
+    _login_failures.setdefault(email, []).append(time.time())
+    raise HTTPException(401, "invalid_credentials")
+
+
+def _migrate_from_supabase(email: str, password: str) -> Optional[dict]:
+    """Primeiro login de quem vem do Supabase: confere a senha lá e traz conta + dados."""
+    try:
+        session = sb.supabase_sign_in(email, password)
+    except Exception:  # noqa: BLE001
+        sb.log.exception("Supabase indisponível no login de migração")
+        raise HTTPException(503, "migration_unavailable")
+    if not session:
+        return None
+    token = session["access_token"]
+    sb_user = session["user"]
+    uid = sb_user["id"]
+    name = (sb_user.get("user_metadata") or {}).get("name")
+    try:
+        roles = sb._select_all("user_roles", token)
+        is_admin = any(r.get("user_id") == uid and r.get("role") == "admin" for r in roles)
+    except Exception:  # noqa: BLE001
+        is_admin = False
+    with pool.connection() as conn:
+        row = conn.execute(
+            """INSERT INTO users (id, email, name, password_hash, role) VALUES (%s, %s, %s, %s, %s)
+               ON CONFLICT (id) DO UPDATE SET email = EXCLUDED.email,
+                   name = COALESCE(EXCLUDED.name, users.name),
+                   password_hash = EXCLUDED.password_hash, role = EXCLUDED.role
+               RETURNING *""",
+            (uid, email, name, hash_password(password), "admin" if is_admin else "user")).fetchone()
+    _import_supabase_data(email, password, token)
+    return row
+
+
+def _import_supabase_data(email: str, password: str, token: Optional[str] = None) -> None:
+    """Copia os dados que a sessão do Supabase enxerga. Falha não bloqueia o login:
+    `supabase_imported` fica false e a cópia é tentada de novo no próximo login."""
+    try:
+        if token is None:
+            session = sb.supabase_sign_in(email, password)
+            if not session:  # sem conta (ou senha diferente) no Supabase: nada a importar
+                with pool.connection() as conn:
+                    conn.execute("UPDATE users SET supabase_imported = true WHERE lower(email) = lower(%s)", (email,))
+                return
+            token = session["access_token"]
+        with pool.connection() as conn:
+            if not conn.execute("SELECT 1 FROM checklist_items LIMIT 1").fetchone():
+                sb.import_public_checklists(conn)
+            result = sb.import_user_data(conn, token)
+            conn.execute("UPDATE users SET supabase_imported = true WHERE lower(email) = lower(%s)", (email,))
+        sb.log.info("migrado %s: %d auditorias, %d respostas, %d fotos na fila",
+                    email, result["audits"], result["items"], len(result["photos"]))
+        sb.download_photos(pool, result["photos"], UPLOAD_DIR)
+    except Exception:  # noqa: BLE001
+        sb.log.exception("falha ao migrar dados de %s (nova tentativa no próximo login)", email)
 
 
 @app.get("/auth/me")

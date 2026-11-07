@@ -79,3 +79,6 @@ CREATE TABLE IF NOT EXISTS audit_item_images (
     created_at    timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS audit_item_images_item_idx ON audit_item_images (audit_item_id);
+
+-- Migração do Supabase no primeiro login: marca quem já teve os dados copiados.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS supabase_imported boolean NOT NULL DEFAULT false;

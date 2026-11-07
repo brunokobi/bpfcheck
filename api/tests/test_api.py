@@ -109,3 +109,63 @@ def test_rejects_svg_upload(client, checklist):
     files = {"file": ("x.svg", b"<svg onload='alert(1)'/>", "image/svg+xml")}
     r = client.put(f"/audits/{aid}/items/{checklist['items'][0]}/images/{uuid.uuid4()}", files=files, headers=u["headers"])
     assert r.status_code == 415
+
+
+def test_first_login_migrates_from_supabase(client, checklist, monkeypatch):
+    from app import supabase_import as sb
+
+    uid, other = str(uuid.uuid4()), str(uuid.uuid4())
+    aid, other_aid, item_id = str(uuid.uuid4()), str(uuid.uuid4()), str(uuid.uuid4())
+    calls = {"sign_in": 0}
+
+    def fake_sign_in(email, password):
+        calls["sign_in"] += 1
+        if email == "antiga@test.com" and password == "senhaSupabase":
+            return {"access_token": "tok", "user": {"id": uid, "email": email, "user_metadata": {"name": "Antiga"}}}
+        return None
+
+    tables = {
+        "user_roles": [{"user_id": uid, "role": "admin"}],
+        "profiles": [{"id": uid, "email": "antiga@test.com", "name": "Antiga"},
+                     {"id": other, "email": "outra@test.com", "name": "Outra"}],
+        "audit_locations": [],
+        "audits": [
+            {"id": aid, "user_id": uid, "checklist_id": checklist["id"], "location": "Cantina",
+             "location_id": None, "status": "completed", "started_at": "2026-01-01T10:00:00Z",
+             "finished_at": "2026-01-01T11:00:00Z"},
+            {"id": other_aid, "user_id": other, "checklist_id": checklist["id"], "location": "Outra",
+             "location_id": None, "status": None, "started_at": None, "finished_at": None},
+        ],
+        "audit_items": [{"id": item_id, "audit_id": aid, "checklist_item_id": checklist["items"][0],
+                         "result": "conforme", "observation": "ok", "updated_at": "2026-01-01T10:30:00Z"}],
+        "audit_item_images": [{"id": str(uuid.uuid4()), "audit_item_id": item_id,
+                               "image_url": "https://x/foto.jpg", "created_at": None}],
+    }
+    queued = []
+    monkeypatch.setattr(sb, "ENABLED", True)
+    monkeypatch.setattr(sb, "supabase_sign_in", fake_sign_in)
+    monkeypatch.setattr(sb, "_select_all", lambda table, token=None: tables[table])
+    monkeypatch.setattr(sb, "download_photos", lambda pool, photos, d: queued.extend(photos))
+
+    assert client.post("/auth/login", json={"email": "antiga@test.com", "password": "errada"}).status_code == 401
+
+    r = client.post("/auth/login", json={"email": "antiga@test.com", "password": "senhaSupabase"})
+    assert r.status_code == 200, r.text
+    user = r.json()["user"]
+    assert user["id"] == uid and user["role"] == "admin" and user["name"] == "Antiga"
+    h = {"Authorization": f"Bearer {r.json()['token']}"}
+
+    audits = {a["id"]: a for a in client.get("/audits", headers=h).json()}
+    assert audits[aid]["status"] == "completed" and audits[aid]["compliance"] == 100
+    assert audits[other_aid]["auditor_name"] == "Outra"  # admin trouxe a auditoria de outra pessoa
+    assert len(queued) == 1 and queued[0]["audit_id"] == aid
+
+    # segundo login: senha local (bcrypt), sem consultar o Supabase
+    before = calls["sign_in"]
+    assert client.post("/auth/login", json={"email": "antiga@test.com", "password": "senhaSupabase"}).status_code == 200
+    assert calls["sign_in"] == before
+
+    # a "outra" pessoa existe como conta pendente e migra no primeiro login dela
+    with pool.connection() as conn:
+        row = conn.execute("SELECT password_hash FROM users WHERE id = %s", (other,)).fetchone()
+    assert row["password_hash"] == sb.UNMIGRATED_HASH
