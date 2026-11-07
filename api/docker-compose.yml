@@ -28,6 +28,10 @@ services:
       JWT_SECRET: ${JWT_SECRET:?defina JWT_SECRET no .env}
       PUBLIC_URL: https://bpfcheck-api.brunokobi.tech
       CORS_ORIGINS: ${CORS_ORIGINS:-https://bpfcheck.netlify.app,http://localhost:8080}
+      # Supabase antigo: migração no primeiro login (URL e chave PÚBLICAS, as mesmas do app 1.x).
+      # Remover depois que todos os usuários tiverem migrado.
+      SUPABASE_URL: ${SUPABASE_URL:-https://lxkobnubawhqndboxgwj.supabase.co}
+      SUPABASE_KEY: ${SUPABASE_KEY:-sb_publishable_tcmjc095jMFO3MfeITnSvA_J9NU4zG6}
     volumes:
       - bpfcheck_uploads:/data/uploads
     depends_on:

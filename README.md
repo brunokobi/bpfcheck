@@ -145,6 +145,10 @@ O frontend continua em `bpfcheck.netlify.app` — a TWA da Play Store (`app.netl
 
 ### Migração do Supabase
 
+**Automática, no primeiro login (em uso):** sem a senha do banco. Na subida, a API importa o checklist RDC 216 das tabelas públicas do Supabase. Quando alguém entra pela primeira vez, a senha é conferida no Supabase e a conta é criada com o **mesmo id e a mesma senha**. Com o token dessa sessão, a API copia as auditorias, respostas, locais e fotos que a pessoa enxerga (o admin traz os de todos). Se a cópia falhar, ela é refeita no login seguinte. Configuração: `SUPABASE_URL` e `SUPABASE_KEY` (chave pública) no `api/docker-compose.yml`. Para isso funcionar, o projeto Supabase precisa continuar ativo; o keepalive da vpsrafa já faz isso.
+
+**Manual, com a senha do banco (alternativa):**
+
 Script `api/scripts/migrate_from_supabase.py`: copia usuários (com a mesma senha), checklist, locais, auditorias, respostas e fotos, preservando os ids. Pode ser repetido.
 
 ```bash
