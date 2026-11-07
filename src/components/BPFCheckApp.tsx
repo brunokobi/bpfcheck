@@ -40,6 +40,14 @@ export const BPFCheckApp = () => {
     }
   };
 
+  // Checklist e relatório têm barra fixa no rodapé: o botão flutuante do chat cobriria o conteúdo.
+  useEffect(() => {
+    const hide = currentView === "checklist" || currentView === "report-view";
+    if (hide) document.body.setAttribute("data-hide-chat", "");
+    else document.body.removeAttribute("data-hide-chat");
+    return () => document.body.removeAttribute("data-hide-chat");
+  }, [currentView]);
+
   // Navigate to dashboard when user logs in
   useEffect(() => {
     if (!loading && user && !showSplash) {

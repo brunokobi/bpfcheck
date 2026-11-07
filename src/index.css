@@ -175,3 +175,6 @@
   .bpf-float, .bpf-ring, .bpf-orbit, .bpf-glow, .bpf-dot, .bpf-shine { animation: none }
   .bpf-rise, .bpf-pop, .bpf-sheet { animation-duration: .01s }
 }
+
+/* Esconde o botão do chat (widget n8nchatui) nas telas com barra fixa no rodapé. */
+body[data-hide-chat] n8nchatui-popup { display: none !important; }
