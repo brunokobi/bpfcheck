@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { AppHeader } from "./layout/AppHeader";
 import { AuthPage } from "./auth/AuthPage";
 import { DashboardHome } from "./dashboard/DashboardHome";
 import { ChecklistForm } from "./checklist/ChecklistForm";
@@ -186,11 +185,9 @@ export const BPFCheckApp = () => {
         </div>
       )}
 
-      {/* Telas com cabeçalho azul próprio (PageHero); só o relatório usa o cabeçalho compacto. */}
-      {currentView === "report-view" && <AppHeader />}
 
       {/* Espaço no rodapé para a barra de navegação e o botão do chat não cobrirem o conteúdo */}
-      <main className={`max-w-2xl mx-auto px-4 sm:px-6 ${currentView === "report-view" ? "pt-6" : "sm:pt-6"} ${navTab ? "pb-44" : "pb-28"}`}>
+      <main className={`max-w-2xl mx-auto px-4 sm:px-6 sm:pt-6 ${navTab ? "pb-44" : "pb-28"}`}>
         {currentView === "dashboard" && (
           <DashboardHome
             userName={userName}

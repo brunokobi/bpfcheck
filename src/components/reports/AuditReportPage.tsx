@@ -1,24 +1,19 @@
 import { useState, useEffect, useMemo } from "react";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import {
-  ArrowLeft,
-  Download,
-  Loader2,
-  CheckCircle,
-  XCircle,
-  MinusCircle,
-  FileText,
-  Building,
-  User,
+  AlertTriangle,
   Calendar,
+  CalendarCheck,
+  CheckCircle2,
+  ChevronDown,
+  Download,
+  FileText,
+  Loader2,
+  MapPin,
+  MinusCircle,
+  User,
+  XCircle,
 } from "lucide-react";
+import { PageHero } from "@/components/layout/PageHero";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useLiveQuery } from "dexie-react-hooks";
@@ -121,30 +116,11 @@ export const AuditReportPage = ({ auditId, onBack }: AuditReportPageProps) => {
     }
   };
 
-  const getResultColor = (result: string | null) => {
-    switch (result) {
-      case "conforme":
-        return "text-success";
-      case "nao_conforme":
-        return "text-destructive";
-      case "nao_aplicavel":
-        return "text-muted-foreground";
-      default:
-        return "text-muted-foreground";
-    }
-  };
-
-  const getResultIcon = (result: string | null) => {
-    switch (result) {
-      case "conforme":
-        return <CheckCircle className="w-5 h-5 text-success" />;
-      case "nao_conforme":
-        return <XCircle className="w-5 h-5 text-destructive" />;
-      case "nao_aplicavel":
-        return <MinusCircle className="w-5 h-5 text-muted-foreground" />;
-      default:
-        return <MinusCircle className="w-5 h-5 text-muted-foreground" />;
-    }
+  const RESULT_STYLE: Record<string, { label: string; cls: string; icon: typeof CheckCircle2 }> = {
+    conforme: { label: "Conforme", cls: "bg-green-100 text-green-800", icon: CheckCircle2 },
+    nao_conforme: { label: "Não conforme", cls: "bg-red-100 text-red-800", icon: XCircle },
+    nao_aplicavel: { label: "N/A", cls: "bg-slate-100 text-slate-700", icon: MinusCircle },
+    none: { label: "Não avaliado", cls: "bg-slate-100 text-slate-500", icon: MinusCircle },
   };
 
 const generatePDF = async () => {
@@ -379,16 +355,12 @@ const generatePDF = async () => {
   }
 };
 
-
-
-
-
   if (loading) {
     return (
-      <div className="flex justify-center items-center py-20">
-        <div className="text-center space-y-4">
-          <Loader2 className="h-12 w-12 animate-spin text-primary mx-auto" />
-          <p className="text-muted-foreground">Carregando relatório...</p>
+      <div className="flex justify-center items-center py-24">
+        <div className="text-center space-y-3">
+          <Loader2 className="h-10 w-10 animate-spin text-[#0369A1] mx-auto" />
+          <p className="text-slate-600 text-sm">Carregando relatório...</p>
         </div>
       </div>
     );
@@ -396,12 +368,14 @@ const generatePDF = async () => {
 
   if (!reportData) {
     return (
-      <div className="text-center py-20">
-        <p className="text-muted-foreground">Relatório não encontrado.</p>
-        <Button variant="outline" onClick={onBack} className="mt-4">
-          <ArrowLeft className="w-4 h-4 mr-2" />
-          Voltar
-        </Button>
+      <div>
+        <PageHero title="Relatório" onBack={onBack} />
+        <div className="mt-4 bg-white rounded-3xl p-6 text-center flex flex-col items-center gap-3 shadow-[0_4px_14px_rgba(15,23,42,0.05)]">
+          <FileText className="w-10 h-10 text-slate-300" aria-hidden="true" />
+          <p className="m-0 text-sm text-slate-700">
+            Relatório não encontrado neste aparelho. Conecte-se à internet e tente de novo.
+          </p>
+        </div>
       </div>
     );
   }
@@ -411,187 +385,169 @@ const generatePDF = async () => {
   const naoConformeCount = summary?.nao_conforme_count || 0;
   const naCount = summary?.nao_aplicavel_count || 0;
   const total = conformeCount + naoConformeCount;
-  const complianceRate =
-    total > 0 ? Math.round((conformeCount / total) * 100) : 0;
+  const complianceRate = total > 0 ? Math.round((conformeCount / total) * 100) : 0;
+  const ringColor = complianceRate >= 70 ? "#16A34A" : complianceRate >= 50 ? "#D97706" : "#DC2626";
+  const ringText = complianceRate >= 70 ? "text-green-700" : complianceRate >= 50 ? "text-amber-700" : "text-red-700";
+
+  // Não conformidades em destaque: é o que o auditor precisa ver primeiro.
+  const nonConformities = reportData.sections.flatMap(s =>
+    s.items.filter(i => i.result === "nao_conforme").map(i => ({ ...i, section: s.title })));
+
+  const info = [
+    { icon: MapPin, label: "Local", value: reportData.locationName },
+    { icon: User, label: "Auditor(a)", value: reportData.auditorName },
+    { icon: Calendar, label: "Início", value: formatDate(reportData.audit.started_at) },
+    { icon: CalendarCheck, label: "Conclusão", value: formatDate(reportData.audit.finished_at) },
+  ];
+
+  const ResultPill = ({ result }: { result: string | null }) => {
+    const r = RESULT_STYLE[result ?? "none"] ?? RESULT_STYLE.none;
+    const Icon = r.icon;
+    return (
+      <span className={`shrink-0 inline-flex items-center gap-1 px-2 py-1 rounded-full text-[11px] font-bold ${r.cls}`}>
+        <Icon className="w-3.5 h-3.5" aria-hidden="true" /> {r.label}
+      </span>
+    );
+  };
+
+  const Photos = ({ images, label }: { images: string[]; label: string }) =>
+    images.length ? (
+      <div className="flex flex-wrap gap-2">
+        {images.map((src, i) => (
+          <a key={src} href={src} target="_blank" rel="noreferrer" aria-label={`Abrir foto ${i + 1} de ${label}`}>
+            <img src={src} alt={`Foto ${i + 1} de ${label}`} className="w-16 h-16 rounded-xl object-cover border border-slate-200" />
+          </a>
+        ))}
+      </div>
+    ) : null;
 
   return (
-    <div className="space-y-6 animate-fade-in">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div className="flex items-center space-x-4">
-          <Button variant="outline" onClick={onBack}>
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Voltar
-          </Button>
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-primary">
-              Relatório de Auditoria
-            </h1>
-            <p className="text-muted-foreground">{reportData.locationName}</p>
-          </div>
-        </div>
-        <Button
-          onClick={generatePDF}
-          disabled={generatingPdf}
-          className="bg-gradient-primary"
-        >
-          {generatingPdf ? (
-            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-          ) : (
-            <Download className="w-4 h-4 mr-2" />
-          )}
-          Baixar PDF
-        </Button>
-      </div>
+    <div>
+      <PageHero
+        eyebrow="Relatório de auditoria"
+        title={reportData.audit.location_name || reportData.audit.location || "Auditoria"}
+        subtitle={`Concluída em ${formatDate(reportData.audit.finished_at)}`}
+        onBack={onBack}
+        overlap
+      />
 
-      {/* Audit Info */}
-      <Card className="shadow-card">
-        <CardHeader>
-          <CardTitle className="flex items-center">
-            <FileText className="w-5 h-5 mr-2" />
-            Informações da Auditoria
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="flex items-center space-x-3">
-              <Building className="w-5 h-5 text-muted-foreground" />
-              <div>
-                <p className="text-sm text-muted-foreground">Local</p>
-                <p className="font-medium">{reportData.locationName}</p>
-              </div>
-            </div>
-            <div className="flex items-center space-x-3">
-              <User className="w-5 h-5 text-muted-foreground" />
-              <div>
-                <p className="text-sm text-muted-foreground">Auditor</p>
-                <p className="font-medium">{reportData.auditorName}</p>
-              </div>
-            </div>
-            <div className="flex items-center space-x-3">
-              <Calendar className="w-5 h-5 text-muted-foreground" />
-              <div>
-                <p className="text-sm text-muted-foreground">Data de Início</p>
-                <p className="font-medium">
-                  {formatDate(reportData.audit.started_at)}
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center space-x-3">
-              <Calendar className="w-5 h-5 text-muted-foreground" />
-              <div>
-                <p className="text-sm text-muted-foreground">
-                  Data de Conclusão
-                </p>
-                <p className="font-medium">
-                  {formatDate(reportData.audit.finished_at)}
-                </p>
-              </div>
-            </div>
+      <div className="relative -mt-12 flex flex-col gap-3">
+        {/* Conformidade (real) */}
+        <section aria-label="Resumo" className="bpf-pop bg-white rounded-3xl p-5 flex items-center gap-5 shadow-[0_16px_40px_rgba(15,23,42,0.10)]" style={{ animationDelay: "60ms" }}>
+          <div className="relative w-24 h-24 flex-none">
+            <svg width="96" height="96" viewBox="0 0 96 96" className="-rotate-90" aria-hidden="true">
+              <circle cx="48" cy="48" r="38" fill="none" stroke="#F1F5F9" strokeWidth="11" />
+              <circle cx="48" cy="48" r="38" fill="none" stroke={ringColor} strokeWidth="11" strokeLinecap="round"
+                strokeDasharray={2 * Math.PI * 38} strokeDashoffset={2 * Math.PI * 38 * (1 - complianceRate / 100)} />
+            </svg>
+            <span className={`absolute inset-0 flex items-center justify-center text-2xl font-extrabold tabular-nums ${ringText}`}>
+              {complianceRate}%
+            </span>
           </div>
-        </CardContent>
-      </Card>
-
-      {/* Summary */}
-      <Card className="shadow-card">
-        <CardHeader>
-          <CardTitle>Resumo</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="text-center p-4 bg-success/10 rounded-lg">
-              <p className="text-3xl font-bold text-success">{conformeCount}</p>
-              <p className="text-sm text-muted-foreground">Conforme</p>
-            </div>
-            <div className="text-center p-4 bg-destructive/10 rounded-lg">
-              <p className="text-3xl font-bold text-destructive">
-                {naoConformeCount}
-              </p>
-              <p className="text-sm text-muted-foreground">Não Conforme</p>
-            </div>
-            <div className="text-center p-4 bg-muted rounded-lg">
-              <p className="text-3xl font-bold text-muted-foreground">
-                {naCount}
-              </p>
-              <p className="text-sm text-muted-foreground">N/A</p>
-            </div>
-            <div className="text-center p-4 bg-primary/10 rounded-lg">
-              <p className="text-3xl font-bold text-primary">
-                {complianceRate}%
-              </p>
-              <p className="text-sm text-muted-foreground">
-                Taxa de Conformidade
-              </p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Sections */}
-      {reportData.sections.map((section, sectionIndex) => {
-        const sectionConforme = section.items.filter((i) => i.result === "conforme").length;
-        const sectionNaoConforme = section.items.filter((i) => i.result === "nao_conforme").length;
-        const sectionTotal = sectionConforme + sectionNaoConforme;
-        const sectionComplianceRate = sectionTotal > 0 ? Math.round((sectionConforme / sectionTotal) * 100) : null;
-        
-        return (
-        <Card key={sectionIndex} className="shadow-card">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-lg">{section.title}</CardTitle>
-              {sectionComplianceRate !== null && (
-                <span className={`text-lg font-bold ${sectionComplianceRate >= 80 ? 'text-success' : sectionComplianceRate >= 50 ? 'text-warning' : 'text-destructive'}`}>
-                  {sectionComplianceRate}%
-                </span>
-              )}
-            </div>
-            <CardDescription>
-              {sectionConforme} conforme, {sectionNaoConforme} não conforme
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {section.items.map((item, itemIndex) => (
-                <div key={itemIndex} className="border rounded-lg p-4">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1">
-                      <p className="font-medium text-sm">{item.description}</p>
-                      {item.observation && (
-                        <p className="text-sm text-muted-foreground mt-2">
-                          <strong>Observação:</strong> {item.observation}
-                        </p>
-                      )}
-                      {item.images.length > 0 && (
-                        <div className="flex flex-wrap gap-2 mt-2">
-                          {item.images.map((img, imgIndex) => (
-                            <img
-                              key={imgIndex}
-                              src={img}
-                              alt={`Foto ${imgIndex + 1}`}
-                              className="w-16 h-16 object-cover rounded"
-                            />
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      {getResultIcon(item.result)}
-                      <span
-                        className={`text-sm font-medium ${getResultColor(
-                          item.result
-                        )}`}
-                      >
-                        {getResultText(item.result)}
-                      </span>
-                    </div>
-                  </div>
+          <div className="flex-1 min-w-0 flex flex-col gap-2">
+            <span className="text-xs font-bold tracking-[0.06em] uppercase text-slate-600">Taxa de conformidade</span>
+            <div className="grid grid-cols-3 gap-2 text-center">
+              {[
+                { n: conformeCount, label: "Conforme", cls: "bg-green-50 text-green-800" },
+                { n: naoConformeCount, label: "Não conf.", cls: "bg-red-50 text-red-800" },
+                { n: naCount, label: "N/A", cls: "bg-slate-50 text-slate-700" },
+              ].map(c => (
+                <div key={c.label} className={`rounded-xl py-1.5 ${c.cls}`}>
+                  <div className="text-lg font-extrabold tabular-nums leading-tight">{c.n}</div>
+                  <div className="text-[10px] font-bold leading-tight">{c.label}</div>
                 </div>
               ))}
             </div>
-          </CardContent>
-        </Card>
-        );
-      })}
+          </div>
+        </section>
+
+        {/* Informações */}
+        <section aria-label="Informações" className="bpf-rise bg-white rounded-3xl px-5 py-2 shadow-[0_4px_14px_rgba(15,23,42,0.05)]" style={{ animationDelay: "120ms" }}>
+          {info.map(({ icon: Icon, label, value }) => (
+            <div key={label} className="flex items-center gap-3 py-2.5">
+              <div className="w-10 h-10 shrink-0 rounded-[13px] bg-sky-50 text-sky-700 flex items-center justify-center">
+                <Icon className="w-5 h-5" aria-hidden="true" />
+              </div>
+              <div className="min-w-0 flex flex-col">
+                <span className="text-xs font-semibold text-slate-600">{label}</span>
+                <span className="text-[15px] font-bold text-slate-900 break-words">{value}</span>
+              </div>
+            </div>
+          ))}
+        </section>
+
+        {/* Não conformidades em destaque */}
+        {nonConformities.length > 0 && (
+          <section aria-label="Não conformidades" className="bpf-rise bg-red-50 border border-red-100 rounded-3xl p-4 flex flex-col gap-3" style={{ animationDelay: "180ms" }}>
+            <h2 className="m-0 flex items-center gap-2 text-base font-extrabold text-red-900">
+              <AlertTriangle className="w-5 h-5" aria-hidden="true" />
+              {nonConformities.length} não conformidade{nonConformities.length > 1 ? "s" : ""}
+            </h2>
+            {nonConformities.map((nc, i) => (
+              <div key={i} className="bg-white rounded-2xl p-3 flex flex-col gap-2">
+                <span className="text-[11px] font-bold uppercase tracking-[0.04em] text-slate-500">{nc.section}</span>
+                <p className="m-0 text-sm font-semibold text-slate-900 leading-snug">{nc.description}</p>
+                {nc.observation && <p className="m-0 text-sm text-slate-700 bg-slate-50 rounded-xl p-2.5">{nc.observation}</p>}
+                <Photos images={nc.images} label={nc.description} />
+              </div>
+            ))}
+          </section>
+        )}
+
+        {/* Itens por seção (recolhíveis para caber no celular) */}
+        <h2 className="m-0 mt-2 px-1 text-lg font-extrabold tracking-[-0.01em] text-slate-900">Itens por seção</h2>
+        {reportData.sections.map((section, sIdx) => {
+          const c = section.items.filter(i => i.result === "conforme").length;
+          const nc = section.items.filter(i => i.result === "nao_conforme").length;
+          const pct = c + nc > 0 ? Math.round((c / (c + nc)) * 100) : null;
+          return (
+            <details key={sIdx} className="group bg-white rounded-[20px] shadow-[0_4px_14px_rgba(15,23,42,0.05)] overflow-hidden">
+              <summary className="list-none cursor-pointer p-4 flex items-center gap-3 min-h-14 [&::-webkit-details-marker]:hidden">
+                <span className="w-8 h-8 shrink-0 rounded-[10px] bg-slate-100 text-slate-700 flex items-center justify-center text-xs font-extrabold">
+                  {sIdx + 1}
+                </span>
+                <div className="flex-1 min-w-0">
+                  <span className="block text-[15px] font-bold text-slate-900 leading-snug">{section.title}</span>
+                  <span className="text-xs text-slate-600">
+                    {section.items.length} itens · <span className="text-green-700 font-bold">✓ {c}</span>{" "}
+                    <span className="text-red-700 font-bold">✗ {nc}</span>
+                  </span>
+                </div>
+                {pct !== null && (
+                  <span className={`shrink-0 px-2.5 py-1 rounded-full text-xs font-bold ${pct >= 80 ? "bg-green-100 text-green-800" : pct >= 50 ? "bg-amber-100 text-amber-800" : "bg-red-100 text-red-800"}`}>
+                    {pct}%
+                  </span>
+                )}
+                <ChevronDown className="w-5 h-5 shrink-0 text-slate-400 transition-transform group-open:rotate-180" aria-hidden="true" />
+              </summary>
+              <div className="px-4 pb-4 flex flex-col divide-y divide-slate-100">
+                {section.items.map((item, iIdx) => (
+                  <div key={iIdx} className="py-3 flex flex-col gap-2">
+                    <div className="flex items-start gap-3">
+                      <p className="m-0 flex-1 text-sm text-slate-900 leading-snug">{item.description}</p>
+                      <ResultPill result={item.result} />
+                    </div>
+                    {item.observation && <p className="m-0 text-sm text-slate-700 bg-slate-50 rounded-xl p-2.5">{item.observation}</p>}
+                    <Photos images={item.images} label={item.description} />
+                  </div>
+                ))}
+              </div>
+            </details>
+          );
+        })}
+      </div>
+
+      {/* Barra fixa: baixar PDF */}
+      <div className="fixed inset-x-3 z-40 mx-auto max-w-2xl" style={{ bottom: "calc(16px + env(safe-area-inset-bottom))" }}>
+        <div className="bg-white rounded-3xl p-2 shadow-[0_-2px_30px_rgba(15,23,42,0.14)]">
+          <button
+            type="button" onClick={generatePDF} disabled={generatingPdf}
+            className="bpf-tap w-full h-12 rounded-2xl bg-[#0369A1] text-white font-bold flex items-center justify-center gap-2 disabled:opacity-70"
+          >
+            {generatingPdf ? <><Loader2 className="w-5 h-5 animate-spin" /> Gerando PDF...</> : <><Download className="w-5 h-5" /> Baixar PDF</>}
+          </button>
+        </div>
+      </div>
     </div>
   );
 };
