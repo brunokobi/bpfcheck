@@ -14,8 +14,10 @@ export const handler: Handler = async (event) => {
       };
     }
 
-    // URL do webhook do Chat Trigger no n8n da vpsrafa — variável de ambiente do site no Netlify.
-    const webhookUrl = process.env.N8N_CHAT_WEBHOOK_URL;
+    // URL do webhook do Chat Trigger no n8n da vpsrafa. A URL é pública (o widget já a expõe),
+    // então tem padrão aqui; N8N_CHAT_WEBHOOK_URL no Netlify só serve para trocar sem novo deploy.
+    const webhookUrl = process.env.N8N_CHAT_WEBHOOK_URL
+      || "https://n8n.brunokobi.tech/webhook/bpf-check-webhook-001/chat";
     if (!webhookUrl) {
       return {
         statusCode: 503,

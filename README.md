@@ -141,7 +141,7 @@ O frontend continua em `bpfcheck.netlify.app` — a TWA da Play Store (`app.netl
 | Variável | Valor |
 |---|---|
 | `VITE_API_URL` | `https://bpfcheck-api.brunokobi.tech` (opcional, já é o padrão) |
-| `N8N_CHAT_WEBHOOK_URL` | URL do Chat Trigger do workflow no n8n da vpsrafa |
+| `N8N_CHAT_WEBHOOK_URL` | Opcional — padrão: `https://n8n.brunokobi.tech/webhook/bpf-check-webhook-001/chat` |
 
 ### Migração do Supabase
 
