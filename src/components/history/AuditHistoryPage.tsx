@@ -1,21 +1,11 @@
-import { useState, useEffect } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { 
-  ArrowLeft, 
-  ClipboardCheck, 
-  Search,
-  FileText,
-  Loader2,
-  Calendar,
-  Filter
-} from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { Calendar, CheckCircle2, ChevronRight, ClipboardCheck, Search, User, X } from "lucide-react";
 import { AuditWithDetails, useAuditList } from "@/hooks/useAudits";
+import { getChecklist } from "@/lib/repo";
+import { PageHero } from "@/components/layout/PageHero";
+import { cn } from "@/lib/utils";
 
 interface AuditHistoryPageProps {
   onBack: () => void;
@@ -24,201 +14,174 @@ interface AuditHistoryPageProps {
   isAdmin?: boolean;
 }
 
+type StatusFilter = "all" | "in_progress" | "completed";
+
+const formatDate = (d: string | null) => {
+  if (!d) return "-";
+  try { return format(new Date(d), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR }); } catch { return d; }
+};
+
+const answered = (a: AuditWithDetails) => a.conforme_count + a.nao_conforme_count + a.nao_aplicavel_count;
+
 export const AuditHistoryPage = ({ onBack, onViewReport, onEditAudit, isAdmin = false }: AuditHistoryPageProps) => {
   const { audits, loading } = useAuditList();
-  const [filteredAudits, setFilteredAudits] = useState<AuditWithDetails[]>([]);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [dateFilter, setDateFilter] = useState<string>("");
-
+  const [search, setSearch] = useState("");
+  const [status, setStatus] = useState<StatusFilter>("all");
+  const [date, setDate] = useState("");
+  // Total de itens do checklist (real, do cache) para o progresso das auditorias em andamento.
+  const [totalItems, setTotalItems] = useState(0);
   useEffect(() => {
-    let filtered = [...audits];
+    getChecklist().then(c => setTotalItems(c?.sections.reduce((n, s) => n + s.items.length, 0) ?? 0));
+  }, []);
 
-    // Search filter
-    if (searchTerm) {
-      filtered = filtered.filter(audit => 
-        (audit.location_name || audit.location || '').toLowerCase().includes(searchTerm.toLowerCase())
-      );
-    }
+  const counts = useMemo(() => ({
+    all: audits.length,
+    in_progress: audits.filter(a => a.status === "in_progress").length,
+    completed: audits.filter(a => a.status === "completed").length,
+  }), [audits]);
 
-    // Status filter
-    if (statusFilter !== "all") {
-      filtered = filtered.filter(audit => audit.status === statusFilter);
-    }
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return audits.filter(a =>
+      (status === "all" || a.status === status) &&
+      (!q || (a.location_name || a.location || "").toLowerCase().includes(q) ||
+        (isAdmin && (a.auditor_name || "").toLowerCase().includes(q))) &&
+      (!date || (a.started_at && format(new Date(a.started_at), "yyyy-MM-dd") === date)));
+  }, [audits, search, status, date, isAdmin]);
 
-    // Date filter
-    if (dateFilter) {
-      filtered = filtered.filter(audit => {
-        if (!audit.started_at) return false;
-        return audit.started_at.startsWith(dateFilter);
-      });
-    }
-
-    setFilteredAudits(filtered);
-  }, [searchTerm, statusFilter, dateFilter, audits]);
-
-  const getStatusBadge = (status: string | null) => {
-    switch (status) {
-      case "completed":
-        return <Badge variant="secondary" className="bg-success text-success-foreground">Concluída</Badge>;
-      case "in_progress":
-        return <Badge variant="outline" className="border-warning text-warning">Em andamento</Badge>;
-      default:
-        return <Badge variant="outline">Desconhecido</Badge>;
-    }
-  };
-
-  const formatDate = (dateString: string | null) => {
-    if (!dateString) return '-';
-    try {
-      return format(new Date(dateString), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR });
-    } catch {
-      return dateString;
-    }
-  };
+  const chips: { key: StatusFilter; label: string }[] = [
+    { key: "all", label: "Todas" },
+    { key: "in_progress", label: "Andamento" },
+    { key: "completed", label: "Concluídas" },
+  ];
 
   return (
-    <div className="space-y-6 animate-fade-in">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div className="flex items-center space-x-4">
-          <Button variant="outline" onClick={onBack}>
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Voltar
-          </Button>
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-primary">Histórico de Auditorias</h1>
-            <p className="text-muted-foreground">
-              {isAdmin ? 'Todas as auditorias do sistema' : 'Suas auditorias realizadas'}
-            </p>
-          </div>
+    <div>
+      <PageHero
+        title="Auditorias"
+        subtitle={isAdmin ? "Todas as auditorias do sistema" : "Suas auditorias realizadas"}
+        onBack={onBack}
+        overlap
+      >
+        <label className="bpf-field flex items-center gap-3 h-[50px] rounded-2xl bg-white text-slate-900 px-4 border-[1.5px] border-transparent">
+          <Search className="w-5 h-5 text-slate-500 shrink-0" aria-hidden="true" />
+          <span className="sr-only">Buscar</span>
+          <input
+            value={search} onChange={e => setSearch(e.target.value)}
+            placeholder={isAdmin ? "Buscar por local ou auditor…" : "Buscar por local…"}
+            className="flex-1 min-w-0 h-full bg-transparent outline-none text-[15px] placeholder:text-slate-500"
+          />
+          {search && (
+            <button type="button" onClick={() => setSearch("")} aria-label="Limpar busca" className="w-9 h-9 -mr-2 flex items-center justify-center text-slate-500">
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </label>
+      </PageHero>
+
+      <div className="relative -mt-12 flex flex-col gap-3">
+        {/* Filtros: status (com contagem real) + data */}
+        <div className="bpf-pop bg-white rounded-3xl p-2 flex gap-1 shadow-[0_16px_40px_rgba(15,23,42,0.10)]" style={{ animationDelay: "80ms" }}>
+          {chips.map(c => (
+            <button
+              key={c.key} type="button" onClick={() => setStatus(c.key)} aria-pressed={status === c.key}
+              className={cn(
+                "flex-1 min-h-11 rounded-2xl text-[13px] font-bold flex items-center justify-center gap-1.5 transition-colors",
+                status === c.key ? "bg-[#0369A1] text-white" : "text-slate-600 active:bg-slate-100",
+              )}
+            >
+              {c.label}
+              <span className={cn("tabular-nums text-xs px-1.5 rounded-full", status === c.key ? "bg-white/20" : "bg-slate-100")}>
+                {counts[c.key]}
+              </span>
+            </button>
+          ))}
         </div>
-      </div>
 
-      {/* Filters */}
-      <Card className="shadow-card">
-        <CardHeader className="pb-4">
-          <CardTitle className="text-lg flex items-center">
-            <Filter className="w-5 h-5 mr-2" />
-            Filtros
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input
-                placeholder="Buscar por local..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
-              />
-            </div>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger>
-                <SelectValue placeholder="Status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos os status</SelectItem>
-                <SelectItem value="completed">Concluídas</SelectItem>
-                <SelectItem value="in_progress">Em andamento</SelectItem>
-              </SelectContent>
-            </Select>
-            <div className="relative">
-              <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input
-                type="date"
-                value={dateFilter}
-                onChange={(e) => setDateFilter(e.target.value)}
-                className="pl-10"
-              />
-            </div>
+        <div className="flex items-center gap-2">
+          <label className="bpf-field flex-1 flex items-center gap-2 h-11 rounded-2xl bg-white px-3 border-[1.5px] border-slate-200 text-sm text-slate-700">
+            <Calendar className="w-4 h-4 text-slate-500 shrink-0" aria-hidden="true" />
+            <span className="sr-only">Filtrar por data</span>
+            <input type="date" value={date} onChange={e => setDate(e.target.value)} className="flex-1 min-w-0 bg-transparent outline-none" />
+          </label>
+          {date && (
+            <button type="button" onClick={() => setDate("")} className="h-11 px-4 rounded-2xl bg-white text-sm font-bold text-[#0369A1] border-[1.5px] border-slate-200">
+              Limpar
+            </button>
+          )}
+        </div>
+
+        <p className="m-0 mt-1 text-[13px] font-semibold text-slate-600">
+          {filtered.length} auditoria{filtered.length !== 1 ? "s" : ""}
+        </p>
+
+        {loading && audits.length === 0 ? (
+          [0, 1, 2].map(i => <div key={i} className="h-[92px] rounded-[20px] bg-white/70 animate-pulse" />)
+        ) : filtered.length === 0 ? (
+          <div className="bg-white rounded-3xl p-8 text-center text-slate-600 text-sm">
+            <ClipboardCheck className="w-10 h-10 mx-auto mb-2 text-slate-300" aria-hidden="true" />
+            {audits.length === 0 ? "Nenhuma auditoria ainda." : "Nenhuma auditoria com esses filtros."}
           </div>
-        </CardContent>
-      </Card>
-
-      {/* Audits List */}
-      <Card className="shadow-card">
-        <CardHeader>
-          <CardTitle>Auditorias</CardTitle>
-          <CardDescription>
-            {filteredAudits.length} auditoria{filteredAudits.length !== 1 ? 's' : ''} encontrada{filteredAudits.length !== 1 ? 's' : ''}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <div className="flex justify-center py-8">
-              <Loader2 className="h-8 w-8 animate-spin text-primary" />
-            </div>
-          ) : filteredAudits.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              <ClipboardCheck className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p>Nenhuma auditoria encontrada.</p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {filteredAudits.map((audit) => (
-                <div 
-                  key={audit.id} 
-                  className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors gap-4"
-                >
-                  <div className="flex items-center gap-3 sm:gap-4 min-w-0 w-full sm:w-auto">
-                    <div className="w-10 h-10 shrink-0 bg-gradient-secondary rounded-lg flex items-center justify-center">
-                      <ClipboardCheck className="w-5 h-5 text-primary" />
-                    </div>
-                    <div className="min-w-0">
-                      <h4 className="font-medium truncate">
-                        {audit.location_name || audit.location || 'Local não informado'}
-                      </h4>
-                      <p className="text-sm text-muted-foreground">
-                        {formatDate(audit.started_at)}
-                      </p>
-                      {isAdmin && audit.auditor_name && (
-                        <p className="text-xs text-muted-foreground">
-                          Auditor: {audit.auditor_name}
-                        </p>
-                      )}
-                    </div>
+        ) : (
+          filtered.map((audit, i) => {
+            const done = audit.status === "completed";
+            const pct = totalItems ? Math.round((answered(audit) / totalItems) * 100) : 0;
+            return (
+              <button
+                key={audit.id} type="button"
+                onClick={() => (done ? onViewReport(audit.id) : onEditAudit(audit.id))}
+                className="bpf-tap bpf-rise bg-white rounded-[20px] p-4 flex flex-col gap-3 text-left text-slate-900 shadow-[0_4px_14px_rgba(15,23,42,0.05)]"
+                style={{ animationDelay: `${Math.min(i, 8) * 50}ms` }}
+              >
+                <div className="flex items-center gap-3">
+                  <div className={cn("w-11 h-11 flex-none rounded-[14px] flex items-center justify-center",
+                    done ? "bg-green-50 text-green-700" : "bg-amber-50 text-amber-700")}>
+                    {done ? <CheckCircle2 className="w-5 h-5" aria-hidden="true" /> : <ClipboardCheck className="w-5 h-5" aria-hidden="true" />}
                   </div>
-                  <div className="flex items-center gap-3 sm:gap-4 w-full sm:w-auto">
-                    {audit.compliance != null && (
-                      <div className="text-right">
-                        <p className="text-sm font-medium">{audit.compliance}%</p>
-                        <p className="text-xs text-muted-foreground">Conformidade</p>
+                  <div className="flex-1 min-w-0 flex flex-col gap-[3px]">
+                    <span className="text-[15px] font-bold truncate">{audit.location_name || audit.location || "Local não informado"}</span>
+                    <span className="flex items-center gap-1.5 text-xs text-slate-600">
+                      <Calendar className="w-[13px] h-[13px] shrink-0" aria-hidden="true" />
+                      {formatDate(done ? audit.finished_at || audit.started_at : audit.started_at)}
+                    </span>
+                    {isAdmin && audit.auditor_name && (
+                      <span className="flex items-center gap-1.5 text-xs text-slate-600 truncate">
+                        <User className="w-[13px] h-[13px] shrink-0" aria-hidden="true" /> {audit.auditor_name}
+                      </span>
+                    )}
+                  </div>
+                  <ChevronRight className="w-5 h-5 text-slate-400 shrink-0" aria-hidden="true" />
+                </div>
+
+                {done ? (
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-bold">
+                    <span className="px-2.5 py-1 rounded-full bg-green-100 text-green-800">
+                      {audit.compliance != null ? `${audit.compliance}% conformidade` : "Concluída"}
+                    </span>
+                    <span className="text-green-700">✓ {audit.conforme_count}</span>
+                    <span className="text-red-700">✗ {audit.nao_conforme_count}</span>
+                    <span className="text-slate-500">N/A {audit.nao_aplicavel_count}</span>
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-1.5">
+                    <div className="flex justify-between text-xs font-bold">
+                      <span className="text-amber-800">
+                        Em andamento · {answered(audit)}{totalItems ? `/${totalItems}` : ""} respondidos
+                      </span>
+                      <span className="text-[#0369A1]">Continuar</span>
+                    </div>
+                    {totalItems > 0 && (
+                      <div className="h-[5px] rounded-full bg-slate-100 overflow-hidden">
+                        <div className="h-[5px] rounded-full bg-amber-500" style={{ width: `${pct}%` }} />
                       </div>
                     )}
-                    {getStatusBadge(audit.status)}
-                    {/* Ação alinhada à direita e com altura de toque no celular */}
-                    <div className="flex gap-2 ml-auto">
-                      {audit.status === 'in_progress' && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-10 sm:h-9"
-                          onClick={() => onEditAudit(audit.id)}
-                        >
-                          Continuar
-                        </Button>
-                      )}
-                      {audit.status === 'completed' && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-10 sm:h-9"
-                          onClick={() => onViewReport(audit.id)}
-                        >
-                          <FileText className="w-4 h-4 mr-1" />
-                          Relatório
-                        </Button>
-                      )}
-                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                )}
+              </button>
+            );
+          })
+        )}
+      </div>
     </div>
   );
 };

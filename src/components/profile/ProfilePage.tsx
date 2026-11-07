@@ -6,6 +6,7 @@ import { AppUser } from "@/lib/api";
 import { db } from "@/lib/localdb";
 import { flush, retryFailed } from "@/lib/sync";
 import { useSyncStatus } from "@/hooks/useSyncStatus";
+import { PageHero } from "@/components/layout/PageHero";
 
 interface ProfilePageProps {
   user: AppUser;
@@ -41,12 +42,9 @@ export const ProfilePage = ({ user, onLogout }: ProfilePageProps) => {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="bpf-rise flex flex-col gap-1">
-        <h1 className="m-0 text-[28px] font-extrabold tracking-[-0.02em] text-slate-900">Perfil</h1>
-        <p className="m-0 text-sm text-slate-600">Sua conta e a sincronização deste aparelho</p>
-      </div>
+      <PageHero title="Perfil" subtitle="Sua conta e a sincronização deste aparelho" overlap />
 
-      <section className="bpf-pop bg-white rounded-3xl px-5 py-4 shadow-[0_4px_14px_rgba(15,23,42,0.05)]" style={{ animationDelay: "80ms" }}>
+      <section className="bpf-pop relative -mt-16 bg-white rounded-3xl px-5 py-4 shadow-[0_16px_40px_rgba(15,23,42,0.10)]" style={{ animationDelay: "80ms" }}>
         <div className="flex items-center gap-4 pb-3 border-b border-slate-100">
           <div className="w-14 h-14 shrink-0 rounded-2xl bg-[#0369A1] text-white flex items-center justify-center text-xl font-extrabold" aria-hidden="true">
             {(user.name || user.email).trim().charAt(0).toUpperCase()}

@@ -1,17 +1,5 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
-import { Input } from "@/components/ui/input";
-import {
   Camera,
   ArrowLeft,
   ArrowRight,
@@ -19,7 +7,15 @@ import {
   CheckCircle,
   WifiOff,
   CloudUpload,
+  Check,
+  X,
+  Minus,
+  MapPin,
+  ClipboardCheck,
 } from "lucide-react";
+import { PageHero } from "@/components/layout/PageHero";
+import { cn } from "@/lib/utils";
+import { getChecklist } from "@/lib/repo";
 import { useToast } from "@/hooks/use-toast";
 import { useAudits, ChecklistItemWithResult } from "@/hooks/useAudits";
 import { useSyncStatus } from "@/hooks/useSyncStatus";
@@ -255,434 +251,274 @@ export const ChecklistForm = ({
     setSaving(false);
   };
 
-  const getStatusColor = (result: ChecklistItemWithResult["result"]) => {
-    switch (result) {
-      case "conforme": return "bg-success text-success-foreground";
-      case "nao_conforme": return "bg-destructive text-destructive-foreground";
-      case "nao_aplicavel": return "bg-muted text-muted-foreground";
-      default: return "bg-secondary text-secondary-foreground";
-    }
-  };
+  // Dados reais do checklist em cache para o formulário inicial.
+  const [startInfo, setStartInfo] = useState<{ sections: number; items: number } | null | undefined>(undefined);
+  useEffect(() => {
+    if (!showStartForm) return;
+    getChecklist().then(c =>
+      setStartInfo(c ? { sections: c.sections.length, items: c.sections.reduce((n, s) => n + s.items.length, 0) } : null));
+  }, [showStartForm]);
+
+  // Ao trocar de seção, volta ao topo da lista.
+  useEffect(() => { window.scrollTo({ top: 0, behavior: "smooth" }); }, [currentSection]);
+
+  const RING_C = 2 * Math.PI * 30;
 
   if (checklistUnavailable) {
     return (
-      <div className="space-y-4 py-20 text-center">
-        <WifiOff className="w-10 h-10 mx-auto text-muted-foreground" />
-        <p className="text-muted-foreground">
-          O checklist desta auditoria ainda não foi baixado neste aparelho. Conecte-se à internet e tente de novo.
-        </p>
-        <Button variant="outline" onClick={onBack}>
-          <ArrowLeft className="w-4 h-4 mr-2" /> Voltar
-        </Button>
+      <div>
+        <PageHero title="Checklist indisponível" onBack={onBack} />
+        <div className="mt-4 bg-white rounded-3xl p-6 text-center flex flex-col items-center gap-3 shadow-[0_4px_14px_rgba(15,23,42,0.05)]">
+          <WifiOff className="w-10 h-10 text-amber-600" aria-hidden="true" />
+          <p className="m-0 text-sm text-slate-700">
+            O checklist desta auditoria ainda não foi baixado neste aparelho. Conecte-se à internet e tente de novo.
+          </p>
+        </div>
       </div>
     );
   }
 
   if (showStartForm) {
     return (
-      <div className="space-y-6 animate-fade-in">
-        <div className="flex items-center space-x-4">
-          <Button variant="outline" onClick={onBack}>
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Voltar
-          </Button>
-          <div>
-            <h1 className="text-3xl font-bold text-primary">Nova Auditoria</h1>
-            <p className="text-muted-foreground">
-              Preencha os dados para iniciar
-            </p>
-          </div>
-        </div>
-
-        <Card className="shadow-card max-w-md">
-          <CardHeader>
-            <CardTitle>Dados da Auditoria</CardTitle>
-            <CardDescription>
-              Informe o local onde a auditoria será realizada
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">
-                Local / Estabelecimento *
-              </label>
-              <Input
-                value={locationName}
-                onChange={(e) => setLocationName(e.target.value)}
-                placeholder="Ex: Restaurante Central, Padaria São João..."
-                disabled={saving}
+      <div>
+        <PageHero eyebrow="Checklist RDC 216/2004" title="Nova auditoria" subtitle="Informe onde a auditoria será feita" onBack={onBack} overlap />
+        <form
+          onSubmit={e => { e.preventDefault(); void handleStartAudit(); }}
+          className="bpf-pop relative -mt-12 bg-white rounded-3xl p-5 flex flex-col gap-4 shadow-[0_16px_40px_rgba(15,23,42,0.10)]"
+          style={{ animationDelay: "80ms" }}
+        >
+          <div className="flex flex-col gap-2">
+            <label htmlFor="audit-location" className="text-[13px] font-bold text-slate-700">Local / Estabelecimento</label>
+            <div className="bpf-field h-[54px] rounded-2xl border-[1.5px] border-slate-200 bg-slate-50 flex items-center gap-3 px-4 text-[15px]">
+              <MapPin className="w-5 h-5 text-slate-500 shrink-0" aria-hidden="true" />
+              <input
+                id="audit-location" value={locationName} onChange={e => setLocationName(e.target.value)} disabled={saving}
+                placeholder="Ex.: Restaurante Central" autoComplete="off"
+                className="flex-1 min-w-0 h-full bg-transparent outline-none text-slate-900 placeholder:text-slate-500"
               />
             </div>
+          </div>
 
-            <Button
-              onClick={handleStartAudit}
-              className="w-full bg-gradient-primary"
-              disabled={saving || loading}
-            >
-              {saving ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Iniciando...
-                </>
-              ) : (
-                <>
-                  <CheckCircle className="w-4 h-4 mr-2" />
-                  Iniciar Auditoria
-                </>
-              )}
-            </Button>
-          </CardContent>
-        </Card>
+          {startInfo === null ? (
+            <div className="flex items-start gap-3 p-3 rounded-2xl bg-amber-50 text-amber-900 text-sm">
+              <WifiOff className="w-5 h-5 shrink-0 mt-0.5" aria-hidden="true" />
+              O checklist ainda não foi baixado. Conecte-se à internet uma vez para poder auditar offline.
+            </div>
+          ) : startInfo && (
+            <div className="flex items-center gap-3 p-3 rounded-2xl bg-sky-50 text-sky-900 text-sm">
+              <ClipboardCheck className="w-5 h-5 shrink-0" aria-hidden="true" />
+              <span><strong>{startInfo.sections} seções</strong> · {startInfo.items} itens a avaliar</span>
+            </div>
+          )}
+          {isOffline && startInfo && (
+            <p className="m-0 text-xs text-slate-600">
+              Sem internet agora: a auditoria fica salva no aparelho e é enviada sozinha quando a conexão voltar.
+            </p>
+          )}
+
+          <button
+            type="submit" disabled={saving || loading}
+            className="bpf-tap h-14 rounded-2xl bg-[#0369A1] text-white flex items-center justify-center gap-2.5 text-base font-bold shadow-[0_10px_24px_rgba(3,105,161,0.3)] disabled:opacity-70"
+          >
+            {saving ? <><Loader2 className="w-5 h-5 animate-spin" /> Iniciando...</> : <>Iniciar auditoria <ArrowRight className="w-5 h-5" strokeWidth={2.5} /></>}
+          </button>
+        </form>
       </div>
     );
   }
 
   if (loading || sections.length === 0) {
     return (
-      <div className="flex justify-center items-center py-20">
-        <div className="text-center space-y-4">
-          <Loader2 className="h-12 w-12 animate-spin text-primary mx-auto" />
-          <p className="text-muted-foreground">Carregando checklist...</p>
+      <div className="flex justify-center items-center py-24">
+        <div className="text-center space-y-3">
+          <Loader2 className="h-10 w-10 animate-spin text-[#0369A1] mx-auto" />
+          <p className="text-slate-600 text-sm">Carregando checklist...</p>
         </div>
       </div>
     );
   }
 
-  // Section-level derived values (extracted from inline IIFEs)
-  const sectionAnswered = currentSectionItems.filter(i => i.result !== null).length;
-  const sectionTotal = currentSectionItems.length;
-  const sectionProgress = sectionTotal > 0 ? (sectionAnswered / sectionTotal) * 100 : 0;
-  const sectionConforme = currentSectionItems.filter(i => i.result === "conforme").length;
-  const sectionNaoConforme = currentSectionItems.filter(i => i.result === "nao_conforme").length;
+  const answeredCount = allItems.length - pendingCount;
   const sectionCompliance = calculateSectionCompliance(currentSectionItems);
+  const isLastSection = currentSection === sections.length - 1;
+
+  const RESULT_OPTIONS: { value: NonNullable<ChecklistItemWithResult["result"]>; label: string; icon: typeof Check; on: string; off: string }[] = [
+    { value: "conforme", label: "Conforme", icon: Check, on: "bg-green-600 border-green-600 text-white", off: "bg-green-50 border-green-100 text-green-800" },
+    { value: "nao_conforme", label: "Não conforme", icon: X, on: "bg-red-600 border-red-600 text-white", off: "bg-red-50 border-red-100 text-red-800" },
+    { value: "nao_aplicavel", label: "N/A", icon: Minus, on: "bg-slate-600 border-slate-600 text-white", off: "bg-slate-50 border-slate-200 text-slate-700" },
+  ];
 
   return (
-    <div className="space-y-6 animate-fade-in">
-      {/* Hidden file input */}
-      <input
-        type="file"
-        ref={fileInputRef}
-        onChange={handleFileChange}
-        accept="image/*"
-        className="hidden"
+    <div>
+      <input type="file" ref={fileInputRef} onChange={handleFileChange} accept="image/*" className="hidden" />
+
+      <PageHero
+        eyebrow="Checklist RDC 216/2004"
+        title={currentAudit.location_name || currentAudit.location || "Auditoria"}
+        subtitle={savingItems.size > 0 ? "Salvando no aparelho…" : pendingSync > 0 ? `${pendingSync} alteração(ões) a enviar` : isOffline ? "Offline · tudo salvo no aparelho" : "Tudo salvo"}
+        onBack={onBack}
+        overlap
+        actions={isOffline ? (
+          <span className="shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-amber-400 text-amber-950 text-xs font-bold">
+            <WifiOff className="w-3.5 h-3.5" aria-hidden="true" /> Offline
+          </span>
+        ) : pendingSync > 0 ? (
+          <CloudUpload className="w-5 h-5 shrink-0 text-sky-100" aria-label="Alterações a enviar" />
+        ) : null}
       />
 
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div className="flex items-center gap-3 sm:gap-4 w-full sm:w-auto min-w-0">
-          {/* No celular o Voltar vira só ícone (44px) para o título caber em uma linha. */}
-          <Button variant="outline" onClick={onBack} aria-label="Voltar" className="shrink-0 h-11 w-11 p-0 sm:h-10 sm:w-auto sm:px-4">
-            <ArrowLeft className="w-4 h-4 sm:mr-2" />
-            <span className="hidden sm:inline">Voltar</span>
-          </Button>
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 sm:gap-3">
-              <h1 className="text-xl sm:text-3xl font-bold text-primary truncate">
-                Checklist RDC 216/2004
-              </h1>
-              {isOffline && (
-                <Badge variant="destructive" className="shrink-0 hidden sm:flex items-center gap-1 px-2 py-0.5 animate-pulse">
-                  <WifiOff className="w-3 h-3" /> Offline
-                </Badge>
-              )}
-            </div>
-            <p className="text-muted-foreground text-sm truncate">
-              {currentAudit.location || "Auditoria em andamento"}
-            </p>
+      <div className="relative -mt-12 flex flex-col gap-3">
+        {/* Progresso geral (real) */}
+        <section aria-label="Progresso" className="bpf-pop bg-white rounded-3xl p-4 flex items-center gap-4 shadow-[0_16px_40px_rgba(15,23,42,0.10)]" style={{ animationDelay: "60ms" }}>
+          <div className="relative w-[76px] h-[76px] flex-none">
+            <svg width="76" height="76" viewBox="0 0 76 76" className="-rotate-90" aria-hidden="true">
+              <circle cx="38" cy="38" r="30" fill="none" stroke="#E0F2FE" strokeWidth="9" />
+              <circle cx="38" cy="38" r="30" fill="none" stroke="#0284C7" strokeWidth="9" strokeLinecap="round"
+                strokeDasharray={RING_C} strokeDashoffset={RING_C * (1 - progress / 100)} className="transition-[stroke-dashoffset] duration-500" />
+            </svg>
+            <span className="absolute inset-0 flex items-center justify-center text-lg font-extrabold text-[#0369A1] tabular-nums">
+              {Math.round(progress)}%
+            </span>
           </div>
-        </div>
-        <div className="flex items-center space-x-2 w-full sm:w-auto">
-          {savingItems.size > 0 ? (
-            <span className="text-xs text-muted-foreground flex items-center gap-1">
-              <Loader2 className="w-3 h-3 animate-spin" />
-              Salvando...
-            </span>
-          ) : pendingSync > 0 && (
-            <span className="text-xs text-muted-foreground flex items-center gap-1" title="Salvo no aparelho, aguardando envio">
-              <CloudUpload className="w-3 h-3" />
-              {pendingSync} para enviar
-            </span>
-          )}
-          {canFinish ? (
-            <Button
-              onClick={handleFinish}
-              className="bg-gradient-primary flex-1 sm:flex-none"
-              disabled={saving}
-            >
-              {saving ? (
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              ) : (
-                <CheckCircle className="w-4 h-4 mr-2" />
-              )}
-              Finalizar
-            </Button>
-          ) : (
-            <span className="text-xs text-muted-foreground">
-              {pendingCount} {pendingCount === 1 ? "pergunta pendente" : "perguntas pendentes"}
-            </span>
-          )}
-        </div>
-      </div>
-
-      {/* Progress */}
-      <Card className="shadow-card">
-        <CardContent className="pt-6">
-          <div className="space-y-2">
-            <div className="flex justify-between text-sm">
-              <span>Progresso do Checklist</span>
-              <span>{Math.round(progress)}% concluído</span>
+          <div className="flex-1 min-w-0 flex flex-col gap-1.5">
+            <span className="text-[15px] font-extrabold text-slate-900">{answeredCount} de {allItems.length} respondidos</span>
+            <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs font-bold">
+              <span className="text-green-700">✓ {summary.conforme_count} conforme</span>
+              <span className="text-red-700">✗ {summary.nao_conforme_count} não conforme</span>
+              <span className="text-slate-500">— {summary.nao_aplicavel_count} N/A</span>
             </div>
-            <Progress value={progress} className="h-2" />
-            <div className="flex justify-between text-xs text-muted-foreground pt-2">
-              <span className="text-success">
-                ✓ {summary.conforme_count} conforme
-              </span>
-              <span className="text-destructive">
-                ✗ {summary.nao_conforme_count} não conforme
-              </span>
-              <span>— {summary.nao_aplicavel_count} N/A</span>
-            </div>
+            {pendingCount > 0 && <span className="text-xs text-slate-600">{pendingCount} pendente{pendingCount > 1 ? "s" : ""}</span>}
+          </div>
+        </section>
 
-            {currentSectionData && (
-              <div className="space-y-2 pt-3 border-t border-border">
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">
-                    Progresso da Seção:{" "}
-                    <span className="font-medium text-foreground">{currentSectionData.title}</span>
+        {/* Seções: rolagem horizontal com progresso de cada uma */}
+        <nav aria-label="Seções" className="-mx-4 px-4 overflow-x-auto [scrollbar-width:none]">
+          <div className="flex gap-2 w-max pb-1">
+            {sections.map((s, i) => {
+              const done = s.items.filter(it => it.result !== null).length;
+              const complete = done === s.items.length && s.items.length > 0;
+              const active = i === currentSection;
+              return (
+                <button
+                  key={s.id} type="button" onClick={() => setCurrentSection(i)} aria-current={active ? "step" : undefined}
+                  className={cn(
+                    "min-h-11 px-3 rounded-2xl flex items-center gap-2 text-[13px] font-bold border-[1.5px] whitespace-nowrap",
+                    active ? "bg-[#0369A1] border-[#0369A1] text-white" : "bg-white border-slate-200 text-slate-700",
+                  )}
+                >
+                  <span className={cn("w-6 h-6 rounded-lg flex items-center justify-center text-[11px]",
+                    complete ? (active ? "bg-white text-[#0369A1]" : "bg-green-100 text-green-700") : active ? "bg-white/20" : "bg-slate-100")}>
+                    {complete ? <Check className="w-3.5 h-3.5" strokeWidth={3} /> : i + 1}
                   </span>
-                  <span>{Math.round(sectionProgress)}% concluído</span>
-                </div>
-                <Progress value={sectionProgress} className="h-2" />
-              </div>
-            )}
+                  <span className="tabular-nums">{done}/{s.items.length}</span>
+                </button>
+              );
+            })}
           </div>
-        </CardContent>
-      </Card>
+        </nav>
 
-      {/* Section Navigation */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div className="space-y-1">
-          <h2 className="text-lg sm:text-xl font-semibold text-primary">
-            {currentSectionData?.title || "Seção"}
-          </h2>
-          <div className="flex items-center gap-3 text-xs">
-            <span className="text-success">✓ {sectionConforme}</span>
-            <span className="text-destructive">✗ {sectionNaoConforme}</span>
-            {sectionCompliance !== null && (
-              <span className={`font-medium ${
-                sectionCompliance >= 80
-                  ? "text-success"
-                  : sectionCompliance >= 50
-                  ? "text-warning"
-                  : "text-destructive"
-              }`}>
-                {sectionCompliance}% conformidade
-              </span>
-            )}
+        {/* Seção atual */}
+        <div className="flex items-start justify-between gap-3 px-1">
+          <div className="min-w-0">
+            <span className="text-xs font-bold tracking-[0.06em] uppercase text-slate-500">Seção {currentSection + 1} de {sections.length}</span>
+            <h2 className="m-0 text-lg font-extrabold tracking-[-0.01em] text-slate-900 leading-snug">{currentSectionData?.title}</h2>
           </div>
+          {sectionCompliance !== null && (
+            <span className={cn("shrink-0 mt-4 px-2.5 py-1 rounded-full text-xs font-bold",
+              sectionCompliance >= 80 ? "bg-green-100 text-green-800" : sectionCompliance >= 50 ? "bg-amber-100 text-amber-800" : "bg-red-100 text-red-800")}>
+              {sectionCompliance}%
+            </span>
+          )}
         </div>
-        <div className="flex space-x-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setCurrentSection(prev => Math.max(0, prev - 1))}
-            disabled={currentSection === 0}
-          >
-            <ArrowLeft className="w-4 h-4" />
-          </Button>
-          <span className="text-sm text-muted-foreground self-center whitespace-nowrap">
-            {currentSection + 1} de {sections.length}
-          </span>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setCurrentSection(prev => Math.min(sections.length - 1, prev + 1))}
-            disabled={currentSection === sections.length - 1}
-          >
-            <ArrowRight className="w-4 h-4" />
-          </Button>
-        </div>
-      </div>
 
-      {/* Checklist Items */}
-      <div className="space-y-4">
         {currentSectionItems.map((item, index) => (
-          <Card
-            key={item.id}
-            className="rounded-2xl bg-muted/50 border border-primary/40 shadow-sm transition hover:shadow-md"
-          >
-            {/* Header */}
-            <CardHeader className="pb-2">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex-1">
-                  <CardTitle className="text-sm font-semibold">
-                    Item {index + 1}
-                  </CardTitle>
-                  <CardDescription className="mt-1 text-sm leading-relaxed">
-                    {item.description}
-                  </CardDescription>
-                </div>
+          <article key={item.id} className="bg-white rounded-[20px] p-4 flex flex-col gap-3 shadow-[0_4px_14px_rgba(15,23,42,0.05)]">
+            <div className="flex gap-3">
+              <span className="w-8 h-8 shrink-0 rounded-[10px] bg-slate-100 text-slate-700 flex items-center justify-center text-xs font-extrabold">
+                {index + 1}
+              </span>
+              <p className="m-0 text-[15px] font-semibold leading-snug text-slate-900">{item.description}</p>
+            </div>
 
-                <Badge
-                  className={`rounded-full px-3 py-1 text-xs font-medium ${getStatusColor(item.result)}`}
-                >
-                  {item.result === "conforme"
-                    ? "Conforme"
-                    : item.result === "nao_conforme"
-                    ? "Não Conforme"
-                    : item.result === "nao_aplicavel"
-                    ? "N/A"
-                    : "Pendente"}
-                </Badge>
-              </div>
-            </CardHeader>
+            <div role="radiogroup" aria-label={`Resultado do item ${index + 1}`} className="grid grid-cols-3 gap-2">
+              {RESULT_OPTIONS.map(opt => {
+                const on = item.result === opt.value;
+                const Icon = opt.icon;
+                return (
+                  <button
+                    key={opt.value} type="button" role="radio" aria-checked={on}
+                    onClick={() => updateItemStatus(item.id, on ? null : opt.value)}
+                    className={cn("bpf-tap min-h-14 rounded-2xl border-[1.5px] px-1 py-1.5 text-[12px] leading-tight font-bold flex flex-col items-center justify-center gap-1", on ? opt.on : opt.off)}
+                  >
+                    <Icon className="w-[18px] h-[18px] shrink-0" strokeWidth={2.5} aria-hidden="true" />
+                    <span>{opt.label}</span>
+                  </button>
+                );
+              })}
+            </div>
 
-            {/* Content */}
-            <CardContent className="space-y-4">
-              {/* Status Buttons */}
-              <div className="grid grid-cols-3 gap-2">
-                <Button
-                  type="button"
-                  onClick={() =>
-                    updateItemStatus(item.id, item.result === "conforme" ? null : "conforme")
-                  }
-                  className={`flex items-center justify-center gap-2 rounded-xl border text-xs font-medium transition-all ${
-                    item.result === "conforme"
-                      ? "bg-success text-white shadow-md ring-2 ring-success/30 scale-[1.02]"
-                      : "bg-background hover:bg-success/10 text-success border-success/40"
-                  }`}
-                >
-                  ✅ Conforme
-                </Button>
+            <label className="sr-only" htmlFor={`obs-${item.id}`}>Observações do item {index + 1}</label>
+            <textarea
+              id={`obs-${item.id}`}
+              value={item.observation ?? ""}
+              onChange={e => updateItemObservations(item.id, e.target.value)}
+              placeholder={item.result === "nao_conforme" ? "Descreva a não conformidade…" : "Observações (opcional)"}
+              rows={2}
+              className="bpf-field w-full min-h-[72px] rounded-2xl border-[1.5px] border-slate-200 bg-slate-50 p-3 text-sm text-slate-900 placeholder:text-slate-500 outline-none resize-y"
+            />
 
-                <Button
-                  type="button"
-                  onClick={() =>
-                    updateItemStatus(item.id, item.result === "nao_conforme" ? null : "nao_conforme")
-                  }
-                  className={`flex items-center justify-center gap-2 rounded-xl border text-xs font-medium transition-all ${
-                    item.result === "nao_conforme"
-                      ? "bg-destructive text-white shadow-md ring-2 ring-destructive/30 scale-[1.02]"
-                      : "bg-background hover:bg-destructive/10 text-destructive border-destructive/40"
-                  }`}
-                >
-                  ❌ Não Conforme
-                </Button>
-
-                <Button
-                  type="button"
-                  onClick={() =>
-                    updateItemStatus(item.id, item.result === "nao_aplicavel" ? null : "nao_aplicavel")
-                  }
-                  className={`flex items-center justify-center gap-2 rounded-xl border text-xs font-medium transition-all ${
-                    item.result === "nao_aplicavel"
-                      ? "bg-muted text-foreground shadow-md ring-2 ring-muted/40 scale-[1.02]"
-                      : "bg-background hover:bg-muted/40 text-muted-foreground border-muted"
-                  }`}
-                >
-                  🚫 N/A
-                </Button>
-              </div>
-
-              {/* Observations */}
-              <div className="space-y-2">
-                <label className="text-xs font-medium text-muted-foreground">
-                  Observações
-                </label>
-                <Textarea
-                  value={item.observation ?? ""}
-                  onChange={(e) => updateItemObservations(item.id, e.target.value)}
-                  placeholder="Digite observações relevantes…"
-                  className="min-h-[70px] rounded-xl text-sm focus-visible:ring-2 focus-visible:ring-primary/30"
-                />
-              </div>
-
-              {/* Photos */}
-              {item.photos && item.photos.length > 0 && (
-                <div className="space-y-2">
-                  <label className="text-xs font-medium text-muted-foreground">
-                    Fotos ({item.photos.length})
-                  </label>
-                  <div className="flex flex-wrap gap-2">
-                    {item.photos.map((photo, idx) => (
-                      <div
-                        key={idx}
-                        className="relative w-16 h-16 overflow-hidden rounded-xl border"
-                      >
-                        <img
-                          src={photo}
-                          alt={`Foto ${idx + 1}`}
-                          className="w-full h-full object-cover"
-                        />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Add Photo Button */}
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => handleTakePhoto(item.id)}
-                disabled={uploadingImage === item.id}
-                className="w-full rounded-xl border-dashed transition hover:bg-primary/5"
+            <div className="flex flex-wrap gap-2">
+              {item.photos.map((photo, idx) => (
+                <img key={photo} src={photo} alt={`Foto ${idx + 1} do item ${index + 1}`} className="w-16 h-16 rounded-xl object-cover border border-slate-200" />
+              ))}
+              <button
+                type="button" onClick={() => handleTakePhoto(item.id)} disabled={uploadingImage === item.id}
+                className="w-16 h-16 rounded-xl border-[1.5px] border-dashed border-slate-300 text-slate-600 flex flex-col items-center justify-center gap-0.5 text-[11px] font-bold active:bg-slate-50 disabled:opacity-60"
+                aria-label={`Adicionar foto ao item ${index + 1}`}
               >
-                {uploadingImage === item.id ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Enviando...
-                  </>
-                ) : (
-                  <>
-                    <Camera className="w-4 h-4 mr-2" />
-                    Adicionar Foto
-                  </>
-                )}
-              </Button>
-            </CardContent>
-          </Card>
+                {uploadingImage === item.id ? <Loader2 className="w-5 h-5 animate-spin" /> : <><Camera className="w-5 h-5" aria-hidden="true" /> Foto</>}
+              </button>
+            </div>
+          </article>
         ))}
       </div>
 
-      {/* Bottom Navigation */}
-      <div className="flex justify-between pt-4 pb-8">
-        <Button
-          variant="outline"
-          onClick={() => setCurrentSection(prev => Math.max(0, prev - 1))}
-          disabled={currentSection === 0}
-        >
-          <ArrowLeft className="w-4 h-4 mr-2" />
-          Seção Anterior
-        </Button>
-        {currentSection === sections.length - 1 ? (
-          canFinish ? (
-            <Button
-              onClick={handleFinish}
-              className="bg-gradient-primary"
-              disabled={saving}
-            >
-              {saving ? (
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              ) : (
-                <CheckCircle className="w-4 h-4 mr-2" />
-              )}
-              Finalizar Auditoria
-            </Button>
-          ) : (
-            <span className="text-sm text-muted-foreground self-center">
-              {pendingCount} {pendingCount === 1 ? "pendente" : "pendentes"}
-            </span>
-          )
-        ) : (
-          <Button
-            onClick={() => setCurrentSection(prev => Math.min(sections.length - 1, prev + 1))}
+      {/* Barra fixa de navegação entre seções / finalizar */}
+      <div className="fixed inset-x-3 z-40 mx-auto max-w-2xl" style={{ bottom: "calc(16px + env(safe-area-inset-bottom))" }}>
+        <div className="bg-white rounded-3xl p-2 flex items-center gap-2 shadow-[0_-2px_30px_rgba(15,23,42,0.14)]">
+          <button
+            type="button" onClick={() => setCurrentSection(p => Math.max(0, p - 1))} disabled={currentSection === 0}
+            aria-label="Seção anterior"
+            className="w-12 h-12 shrink-0 rounded-2xl bg-slate-100 text-slate-700 flex items-center justify-center disabled:opacity-40"
           >
-            Próxima Seção
-            <ArrowRight className="w-4 h-4 ml-2" />
-          </Button>
-        )}
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+          {isLastSection || canFinish ? (
+            <button
+              type="button" onClick={handleFinish} disabled={!canFinish || saving}
+              className="bpf-tap flex-1 h-12 rounded-2xl bg-[#0369A1] text-white font-bold flex items-center justify-center gap-2 disabled:bg-slate-200 disabled:text-slate-600"
+            >
+              {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : <CheckCircle className="w-5 h-5" />}
+              {canFinish ? "Finalizar auditoria" : `${pendingCount} pendente${pendingCount > 1 ? "s" : ""}`}
+            </button>
+          ) : (
+            <button
+              type="button" onClick={() => setCurrentSection(p => Math.min(sections.length - 1, p + 1))}
+              className="bpf-tap flex-1 h-12 rounded-2xl bg-[#0369A1] text-white font-bold flex items-center justify-center gap-2"
+            >
+              Próxima seção <ArrowRight className="w-5 h-5" />
+            </button>
+          )}
+          {!isLastSection && canFinish && (
+            <button
+              type="button" onClick={() => setCurrentSection(p => Math.min(sections.length - 1, p + 1))}
+              aria-label="Próxima seção"
+              className="w-12 h-12 shrink-0 rounded-2xl bg-slate-100 text-slate-700 flex items-center justify-center"
+            >
+              <ArrowRight className="w-5 h-5" />
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
