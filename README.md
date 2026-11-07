@@ -156,7 +156,7 @@ docker compose exec -e SUPABASE_DB_URL='postgresql://postgres:<senha>@db.<ref>.s
 
 ## Agente de IA — n8n Multi-Agent
 
-O BPF Check conta com um assistente inteligente construído no **n8n** com arquitetura **multi-agente**, alimentado pelo **Google Gemini**. O agente responde dúvidas sobre o uso do app e sobre a **RDC 216/2004** diretamente pelo chat.
+O BPF Check conta com um assistente inteligente construído no **n8n** com arquitetura **multi-agente**, alimentado pelo modelo gratuito **NVIDIA Nemotron** via **OpenRouter**. O agente responde dúvidas sobre o uso do app e sobre a **RDC 216/2004** diretamente pelo chat.
 
 ![Fluxo do agente n8n](public/agent-flow.png)
 
@@ -196,12 +196,16 @@ Todos os agentes compartilham a mesma **Buffer Window Memory**, mantendo o conte
 
 ### Onde roda
 
-O workflow está versionado em `n8n/bpfcheck-multiagent.workflow.json` (exportado do n8n antigo, sem credenciais). Para publicar: importar no n8n da vpsrafa (`n8n.brunokobi.tech`), associar a credencial do Google Gemini nos dois nós "Gemini", ativar e copiar a URL do **Chat Trigger** para a variável `N8N_CHAT_WEBHOOK_URL` do Netlify.
+Workflow `bpfCheck_multiagent` (id `kjLEY3S5CPJe4tAu`) ativo no n8n da vpsrafa desde 07/11/2026. Versionado em `n8n/bpfcheck-multiagent.workflow.json`, sem ids de credencial.
+
+- **Webhook** (valor de `N8N_CHAT_WEBHOOK_URL` no Netlify): `https://n8n.brunokobi.tech/webhook/bpf-check-webhook-001/chat`
+- **Modelo:** `nvidia/nemotron-3-ultra-550b-a55b:free` (temperatura 0.2) nos nós "OpenRouter - Orquestrador" e "OpenRouter - Agentes Especialistas", com a credencial `OpenRouter (JARVIS)`, a mesma do chat do Bruno. O limite diário do plano gratuito do OpenRouter é por conta, então é dividido entre os dois chats.
+- **Reimportar:** `docker exec n8n n8n import:workflow --input=<arquivo>` (o JSON precisa de `id` e da credencial com `id`) + `n8n publish:workflow --id=kjLEY3S5CPJe4tAu` + `docker restart n8n`. Mudanças pela CLI só valem depois de reiniciar.
 
 ### Tecnologias do agente
 
 - **n8n** — Orquestração do fluxo
-- **Google Gemini** — LLM para o orquestrador e todos os agentes especialistas
+- **OpenRouter (NVIDIA Nemotron, plano gratuito)** — LLM do orquestrador e de todos os agentes especialistas
 - **LangChain nodes** — Integração de agentes, memória e LLM no n8n
 
 ---
