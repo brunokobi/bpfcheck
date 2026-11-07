@@ -34,6 +34,7 @@ CORS_ORIGINS = [o.strip() for o in os.environ.get(
 TOKEN_DAYS = int(os.environ.get("TOKEN_DAYS", "60"))
 MAX_IMAGE_BYTES = 15 * 1024 * 1024
 SIGNED_URL_DAYS = 7
+ALLOWED_IMAGE_TYPES = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}
 
 pool = ConnectionPool(DATABASE_URL, min_size=1, max_size=10, open=False,
                       kwargs={"row_factory": dict_row, "autocommit": False})
@@ -121,12 +122,33 @@ def signup(body: SignupIn):
     return {"token": make_token(str(row["id"])), "user": public_user(row)}
 
 
+# Limite de tentativas de login por e-mail (em memória: a API roda com 1 processo).
+LOGIN_MAX_FAILURES = 10
+LOGIN_WINDOW_S = 15 * 60
+_login_failures: dict[str, list[float]] = {}
+
+
+def _recent_failures(email: str) -> list[float]:
+    cutoff = time.time() - LOGIN_WINDOW_S
+    recent = [t for t in _login_failures.get(email, []) if t > cutoff]
+    if recent:
+        _login_failures[email] = recent
+    else:
+        _login_failures.pop(email, None)
+    return recent
+
+
 @app.post("/auth/login")
 def login(body: LoginIn):
+    email = body.email.lower()
+    if len(_recent_failures(email)) >= LOGIN_MAX_FAILURES:
+        raise HTTPException(429, "too_many_attempts")
     with pool.connection() as conn:
-        row = conn.execute("SELECT * FROM users WHERE lower(email) = lower(%s)", (body.email,)).fetchone()
+        row = conn.execute("SELECT * FROM users WHERE lower(email) = lower(%s)", (email,)).fetchone()
     if not row or not check_password(body.password, row["password_hash"]):
+        _login_failures.setdefault(email, []).append(time.time())
         raise HTTPException(401, "invalid_credentials")
+    _login_failures.pop(email, None)
     return {"token": make_token(str(row["id"])), "user": public_user(row)}
 
 
@@ -405,9 +427,10 @@ def delete_audit(audit_id: uuid.UUID, user: dict = Depends(current_user)):
 @app.put("/audits/{audit_id}/items/{checklist_item_id}/images/{image_id}")
 async def upload_image(audit_id: uuid.UUID, checklist_item_id: uuid.UUID, image_id: uuid.UUID,
                        file: UploadFile = File(...), user: dict = Depends(current_user)):
+    # Só formatos raster: SVG pode conter script e seria servido pelo domínio da API.
     content_type = file.content_type or "image/jpeg"
-    if not content_type.startswith("image/"):
-        raise HTTPException(415, "not_an_image")
+    if content_type not in ALLOWED_IMAGE_TYPES:
+        raise HTTPException(415, "unsupported_image_type")
     data = await file.read(MAX_IMAGE_BYTES + 1)
     if len(data) > MAX_IMAGE_BYTES:
         raise HTTPException(413, "image_too_large")
@@ -418,7 +441,7 @@ async def upload_image(audit_id: uuid.UUID, checklist_item_id: uuid.UUID, image_
         if conn.execute("SELECT 1 FROM audit_item_images WHERE id = %s", (image_id,)).fetchone():
             return {"id": str(image_id), "url": sign_file(str(image_id))}
 
-        ext = {"image/png": "png", "image/webp": "webp"}.get(content_type, "jpg")
+        ext = ALLOWED_IMAGE_TYPES[content_type]
         rel = f"{user['id']}/{audit_id}/{image_id}.{ext}"
         dest = UPLOAD_DIR / rel
         dest.parent.mkdir(parents=True, exist_ok=True)
@@ -455,7 +478,8 @@ def get_file(image_id: uuid.UUID, exp: int, sig: str):
     # A URL assinada já é a credencial, então liberar a origem não abre acesso novo.
     return FileResponse(path, media_type=row["content_type"],
                         headers={"Cache-Control": "private, max-age=86400",
-                                 "Access-Control-Allow-Origin": "*"})
+                                 "Access-Control-Allow-Origin": "*",
+                                 "X-Content-Type-Options": "nosniff"})
 
 
 @app.get("/health")

@@ -92,3 +92,20 @@ def test_permissions(client, checklist):
                     headers=admin["headers"])
     assert r.status_code == 200
     assert client.post("/auth/login", json={"email": owner["email"], "password": "nova123"}).status_code == 200
+
+
+def test_login_rate_limit(client):
+    u = make_user(client)
+    for _ in range(10):
+        assert client.post("/auth/login", json={"email": u["email"], "password": "errada"}).status_code == 401
+    # bloqueado mesmo com a senha certa até a janela expirar
+    assert client.post("/auth/login", json={"email": u["email"], "password": "secret123"}).status_code == 429
+
+
+def test_rejects_svg_upload(client, checklist):
+    u = make_user(client)
+    aid = str(uuid.uuid4())
+    client.put(f"/audits/{aid}", json={"checklist_id": checklist["id"]}, headers=u["headers"])
+    files = {"file": ("x.svg", b"<svg onload='alert(1)'/>", "image/svg+xml")}
+    r = client.put(f"/audits/{aid}/items/{checklist['items'][0]}/images/{uuid.uuid4()}", files=files, headers=u["headers"])
+    assert r.status_code == 415

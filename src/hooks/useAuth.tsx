@@ -104,6 +104,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         toast({ title: "Erro no login", description: "E-mail ou senha incorretos.", variant: "destructive" });
         return { error: err };
       }
+      if (err instanceof ApiError && err.status === 429) {
+        toast({
+          title: "Muitas tentativas",
+          description: "Por segurança, aguarde 15 minutos antes de tentar entrar de novo.",
+          variant: "destructive",
+        });
+        return { error: err };
+      }
       return networkError(err);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
