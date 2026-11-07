@@ -22,3 +22,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Ambiente local (nunca versionar)
+.env
+.env.*
+!.env.example
+.playwright-mcp/

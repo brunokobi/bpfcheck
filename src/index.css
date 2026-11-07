@@ -1,3 +1,6 @@
+/* Fonte empacotada no app (funciona offline, sem Google Fonts) */
+@import "@fontsource-variable/plus-jakarta-sans";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -7,30 +10,31 @@
 @layer base {
   :root {
     /* Core BPF Blue Color Palette */
-    --background: 0 0% 100%;
-    --foreground: 210 100% 12%;
+    /* Tokens do design mobile (11/2026): sky-700 #0369A1, slate-100 #F1F5F9, slate-900 #0F172A */
+    --background: 210 40% 96%;
+    --foreground: 222 47% 11%;
 
     --card: 0 0% 100%;
-    --card-foreground: 210 100% 12%;
+    --card-foreground: 222 47% 11%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 210 100% 12%;
+    --popover-foreground: 222 47% 11%;
 
     /* Primary BPF Blue */
-    --primary: 202 100% 35%;
+    --primary: 201 96% 32%;
     --primary-foreground: 0 0% 100%;
-    --primary-light: 202 100% 45%;
-    --primary-dark: 202 100% 25%;
+    --primary-light: 200 98% 39%;
+    --primary-dark: 202 80% 24%;
 
     /* Secondary Blue Tones */
-    --secondary: 210 25% 95%;
-    --secondary-foreground: 210 100% 12%;
+    --secondary: 204 100% 97%;
+    --secondary-foreground: 222 47% 11%;
 
-    --muted: 210 15% 96%;
-    --muted-foreground: 210 25% 45%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 19% 35%;
 
-    --accent: 202 100% 92%;
-    --accent-foreground: 210 100% 12%;
+    --accent: 204 94% 94%;
+    --accent-foreground: 201 96% 32%;
 
     /* Status Colors */
     --success: 142 76% 36%;
@@ -41,22 +45,22 @@
     --destructive-foreground: 0 0% 100%;
 
     /* UI Elements */
-    --border: 210 20% 88%;
-    --input: 210 20% 94%;
-    --ring: 202 100% 35%;
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 200 98% 39%;
 
     /* BPF Gradients */
-    --gradient-primary: linear-gradient(135deg, hsl(202 100% 35%), hsl(202 100% 45%));
-    --gradient-secondary: linear-gradient(135deg, hsl(210 25% 95%), hsl(202 100% 92%));
-    --gradient-hero: linear-gradient(135deg, hsl(202 100% 25%), hsl(202 100% 35%), hsl(202 100% 45%));
+    --gradient-primary: linear-gradient(135deg, hsl(201 96% 32%), hsl(200 98% 39%));
+    --gradient-secondary: linear-gradient(135deg, hsl(204 100% 97%), hsl(204 94% 94%));
+    --gradient-hero: linear-gradient(160deg, hsl(201 96% 32%), hsl(201 96% 32%));
 
     /* Shadows */
-    --shadow-primary: 0 10px 25px hsl(202 100% 35% / 0.15);
-    --shadow-card: 0 4px 12px hsl(210 25% 45% / 0.1);
+    --shadow-primary: 0 10px 24px rgb(3 105 161 / 0.3);
+    --shadow-card: 0 4px 14px rgb(15 23 42 / 0.05);
 
     /* Animation Variables */
     --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    --radius: 0.75rem;
+    --radius: 1rem;
 
     --sidebar-background: 202 25% 96%;
     --sidebar-foreground: 210 100% 12%;
@@ -131,4 +135,43 @@
   body {
     @apply bg-background text-foreground;
   }
+}
+
+/* ── Animações do design mobile (bpf-*) ───────────────────────────── */
+@keyframes bpfFloat { 0%,100% { transform: translateY(0) } 50% { transform: translateY(-8px) } }
+@keyframes bpfPulse { 0% { transform: scale(1); opacity: .55 } 100% { transform: scale(1.9); opacity: 0 } }
+@keyframes bpfRise { from { opacity: 0; transform: translateY(16px) } to { opacity: 1; transform: translateY(0) } }
+@keyframes bpfPop { from { opacity: 0; transform: scale(.92) } to { opacity: 1; transform: scale(1) } }
+@keyframes bpfSheet { from { transform: translateY(80px); opacity: 0 } to { transform: translateY(0); opacity: 1 } }
+@keyframes bpfDraw { from { stroke-dashoffset: 60 } to { stroke-dashoffset: 0 } }
+@keyframes bpfShine { from { transform: translateX(-100%) } to { transform: translateX(250%) } }
+@keyframes bpfOrbit { from { transform: rotate(0deg) } to { transform: rotate(360deg) } }
+@keyframes bpfGlow {
+  0%,100% { box-shadow: 0 10px 24px rgba(3,105,161,.35), 0 0 0 0 rgba(56,189,248,.45) }
+  50% { box-shadow: 0 10px 24px rgba(3,105,161,.35), 0 0 0 10px rgba(56,189,248,0) }
+}
+@keyframes bpfDot { 0%,100% { opacity: 1 } 50% { opacity: .35 } }
+
+@layer utilities {
+  .bpf-float { animation: bpfFloat 4s ease-in-out infinite }
+  .bpf-ring { position: absolute; inset: 0; border-radius: 32px; border: 2px solid rgba(255,255,255,.5); animation: bpfPulse 2.4s ease-out infinite }
+  .bpf-ring-delay { animation-delay: 1.2s }
+  .bpf-rise { opacity: 0; animation: bpfRise .65s cubic-bezier(.2,.8,.2,1) forwards }
+  .bpf-pop { opacity: 0; animation: bpfPop .55s cubic-bezier(.2,.8,.2,1) forwards }
+  .bpf-sheet { animation: bpfSheet .7s cubic-bezier(.2,.8,.2,1) both }
+  .bpf-check { stroke-dasharray: 60; animation: bpfDraw 1s .3s ease-out both }
+  .bpf-shine { position: absolute; top: 0; bottom: 0; width: 40%; background: rgba(255,255,255,.55); filter: blur(6px); animation: bpfShine 1.6s linear infinite }
+  .bpf-orbit { animation: bpfOrbit 40s linear infinite }
+  .bpf-glow { animation: bpfGlow 2.2s ease-in-out infinite }
+  .bpf-dot { animation: bpfDot 1.6s ease-in-out infinite }
+  .bpf-tap { transition: transform .15s, box-shadow .2s }
+  .bpf-tap:active { transform: scale(.97) }
+  .bpf-field { transition: border-color .2s, box-shadow .2s, background .2s }
+  .bpf-field:focus-within { border-color: #0284C7; background: #ffffff; box-shadow: 0 0 0 4px rgba(2,132,199,.15) }
+  .pb-safe { padding-bottom: env(safe-area-inset-bottom) }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bpf-float, .bpf-ring, .bpf-orbit, .bpf-glow, .bpf-dot, .bpf-shine { animation: none }
+  .bpf-rise, .bpf-pop, .bpf-sheet { animation-duration: .01s }
 }

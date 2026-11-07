@@ -3,16 +3,24 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-import { AuthProvider } from "@/hooks/useAuth";
-import { useSyncWorker } from "@/hooks/useSyncWorker";
+import { useEffect } from "react";
+import { AuthProvider, useAuth } from "@/hooks/useAuth";
+import { useOnline } from "@/hooks/useSyncStatus";
+import { startSyncLoop } from "@/lib/sync";
+import { refreshChecklist } from "@/lib/repo";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
 
-// Mounts the offline sync worker inside the provider tree (needs useToast)
-const SyncWorker = () => {
-  useSyncWorker();
+// Liga a fila de sincronização e baixa o checklist para uso offline sempre que houver conexão.
+const SyncBootstrap = () => {
+  const { user } = useAuth();
+  const online = useOnline();
+  useEffect(() => { startSyncLoop(); }, []);
+  useEffect(() => {
+    if (user && online) void refreshChecklist();
+  }, [user, online]);
   return null;
 };
 
@@ -22,7 +30,7 @@ const App = () => (
       <TooltipProvider>
         <Toaster />
         <Sonner />
-        <SyncWorker />
+        <SyncBootstrap />
         <BrowserRouter>
           <Routes>
             <Route path="/" element={<Index />} />

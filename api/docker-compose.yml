@@ -1,0 +1,54 @@
+# BPF Check API na vpsrafa — mesmo padrão do rcm (Traefik do Coolify via labels).
+# Deploy: copiar a pasta api/ para ~/apps/bpfcheck-api/, criar o .env (ver .env.example) e
+#   docker compose up -d --build
+services:
+  bpfcheck-postgres:
+    image: postgres:16
+    container_name: bpfcheck-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: bpfcheck
+      POSTGRES_USER: bpfcheck
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}
+    volumes:
+      - bpfcheck_postgres_data:/var/lib/postgresql/data
+    networks:
+      - bpfcheck
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bpfcheck -d bpfcheck"]
+      interval: 10s
+      retries: 5
+
+  bpfcheck-api:
+    build: .
+    container_name: bpfcheck-api
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://bpfcheck:${POSTGRES_PASSWORD}@bpfcheck-postgres:5432/bpfcheck
+      JWT_SECRET: ${JWT_SECRET:?defina JWT_SECRET no .env}
+      PUBLIC_URL: https://bpfcheck-api.brunokobi.tech
+      CORS_ORIGINS: ${CORS_ORIGINS:-https://bpfcheck.netlify.app,http://localhost:8080}
+    volumes:
+      - bpfcheck_uploads:/data/uploads
+    depends_on:
+      bpfcheck-postgres:
+        condition: service_healthy
+    networks:
+      - bpfcheck
+      - coolify
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=coolify
+      - traefik.http.routers.bpfcheck-api.rule=Host(`bpfcheck-api.brunokobi.tech`)
+      - traefik.http.routers.bpfcheck-api.entrypoints=https
+      - traefik.http.routers.bpfcheck-api.tls.certresolver=letsencrypt
+      - traefik.http.services.bpfcheck-api.loadbalancer.server.port=8000
+
+networks:
+  bpfcheck:
+  coolify:
+    external: true
+
+volumes:
+  bpfcheck_postgres_data:
+  bpfcheck_uploads:

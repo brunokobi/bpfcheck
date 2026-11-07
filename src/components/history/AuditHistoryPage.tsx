@@ -15,9 +15,7 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { AuditWithDetails } from "@/hooks/useAudits";
-import { getAudits, getAuditSummary, Audit } from "@/lib/supabase-service";
-import { supabase } from "@/integrations/supabase/client";
+import { AuditWithDetails, useAuditList } from "@/hooks/useAudits";
 
 interface AuditHistoryPageProps {
   onBack: () => void;
@@ -27,77 +25,11 @@ interface AuditHistoryPageProps {
 }
 
 export const AuditHistoryPage = ({ onBack, onViewReport, onEditAudit, isAdmin = false }: AuditHistoryPageProps) => {
-  const [audits, setAudits] = useState<AuditWithDetails[]>([]);
+  const { audits, loading } = useAuditList();
   const [filteredAudits, setFilteredAudits] = useState<AuditWithDetails[]>([]);
-  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [dateFilter, setDateFilter] = useState<string>("");
-
-  useEffect(() => {
-    fetchAudits();
-  }, [isAdmin]);
-
-  const fetchAudits = async () => {
-    setLoading(true);
-    try {
-      let data: Audit[] | null = null;
-      
-      if (isAdmin) {
-        // Admin sees all audits
-        const { data: allAudits, error } = await supabase
-          .from('audits')
-          .select(`
-            *,
-            audit_locations(name),
-            profiles(name, email)
-          `)
-          .order('started_at', { ascending: false });
-        
-        if (error) throw error;
-        data = allAudits;
-      } else {
-        const result = await getAudits();
-        if (result.error) throw new Error(result.error);
-        data = result.data;
-      }
-
-      if (data) {
-        // Get summaries for compliance
-        const auditIds = data.map(a => a.id);
-        const { data: summaries } = await supabase
-          .from('audit_summary')
-          .select('*')
-          .in('audit_id', auditIds);
-
-        const auditsWithDetails: AuditWithDetails[] = data.map((audit: any) => {
-          const summary = summaries?.find(s => s.audit_id === audit.id);
-          let compliance: number | undefined;
-          
-          if (summary) {
-            const total = (summary.conforme_count || 0) + (summary.nao_conforme_count || 0);
-            if (total > 0) {
-              compliance = Math.round(((summary.conforme_count || 0) / total) * 100);
-            }
-          }
-
-          return {
-            ...audit,
-            compliance,
-            location_name: audit.audit_locations?.name || audit.location,
-            auditor_name: audit.profiles?.name || audit.profiles?.email,
-          };
-        });
-
-        setAudits(auditsWithDetails);
-        setFilteredAudits(auditsWithDetails);
-      }
-    } catch (error) {
-      console.error('[AuditHistoryPage] Error fetching audits:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   useEffect(() => {
     let filtered = [...audits];
@@ -230,37 +162,39 @@ export const AuditHistoryPage = ({ onBack, onViewReport, onEditAudit, isAdmin = 
                   key={audit.id} 
                   className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors gap-4"
                 >
-                  <div className="flex items-center space-x-4">
-                    <div className="w-10 h-10 bg-gradient-secondary rounded-lg flex items-center justify-center">
+                  <div className="flex items-center gap-3 sm:gap-4 min-w-0 w-full sm:w-auto">
+                    <div className="w-10 h-10 shrink-0 bg-gradient-secondary rounded-lg flex items-center justify-center">
                       <ClipboardCheck className="w-5 h-5 text-primary" />
                     </div>
-                    <div>
-                      <h4 className="font-medium">
+                    <div className="min-w-0">
+                      <h4 className="font-medium truncate">
                         {audit.location_name || audit.location || 'Local não informado'}
                       </h4>
                       <p className="text-sm text-muted-foreground">
                         {formatDate(audit.started_at)}
                       </p>
-                      {isAdmin && (audit as any).auditor_name && (
+                      {isAdmin && audit.auditor_name && (
                         <p className="text-xs text-muted-foreground">
-                          Auditor: {(audit as any).auditor_name}
+                          Auditor: {audit.auditor_name}
                         </p>
                       )}
                     </div>
                   </div>
-                  <div className="flex items-center space-x-4 w-full sm:w-auto">
-                    {audit.compliance !== undefined && (
+                  <div className="flex items-center gap-3 sm:gap-4 w-full sm:w-auto">
+                    {audit.compliance != null && (
                       <div className="text-right">
                         <p className="text-sm font-medium">{audit.compliance}%</p>
                         <p className="text-xs text-muted-foreground">Conformidade</p>
                       </div>
                     )}
                     {getStatusBadge(audit.status)}
-                    <div className="flex gap-2">
+                    {/* Ação alinhada à direita e com altura de toque no celular */}
+                    <div className="flex gap-2 ml-auto">
                       {audit.status === 'in_progress' && (
                         <Button
                           variant="outline"
                           size="sm"
+                          className="h-10 sm:h-9"
                           onClick={() => onEditAudit(audit.id)}
                         >
                           Continuar
@@ -270,6 +204,7 @@ export const AuditHistoryPage = ({ onBack, onViewReport, onEditAudit, isAdmin = 
                         <Button
                           variant="outline"
                           size="sm"
+                          className="h-10 sm:h-9"
                           onClick={() => onViewReport(audit.id)}
                         >
                           <FileText className="w-4 h-4 mr-1" />

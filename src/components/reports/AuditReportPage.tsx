@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   Card,
   CardContent,
@@ -21,15 +21,10 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { supabase } from "@/integrations/supabase/client";
-import {
-  Audit,
-  AuditSummary,
-  getAuditById,
-  getAuditSummary,
-  getAuditItems,
-  getChecklistWithSections,
-} from "@/lib/supabase-service";
+import { useLiveQuery } from "dexie-react-hooks";
+import { db, Checklist, LocalAudit } from "@/lib/localdb";
+import { getChecklist, refreshAuditDetail } from "@/lib/repo";
+import { usePhotoUrls } from "@/hooks/useAudits";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
@@ -39,8 +34,8 @@ interface AuditReportPageProps {
 }
 
 interface ReportData {
-  audit: Audit;
-  summary: AuditSummary | null;
+  audit: LocalAudit;
+  summary: LocalAudit | null;
   auditorName: string;
   locationName: string;
   sections: {
@@ -55,104 +50,52 @@ interface ReportData {
 }
 
 export const AuditReportPage = ({ auditId, onBack }: AuditReportPageProps) => {
-  const [loading, setLoading] = useState(true);
-  const [reportData, setReportData] = useState<ReportData | null>(null);
   const [generatingPdf, setGeneratingPdf] = useState(false);
+  const [refreshing, setRefreshing] = useState(true);
+  const [checklist, setChecklist] = useState<Checklist | undefined>();
 
+  // Mostra a cópia local na hora; atualiza do servidor se houver conexão.
   useEffect(() => {
-    fetchReportData();
+    let cancelled = false;
+    setRefreshing(true);
+    (navigator.onLine ? refreshAuditDetail(auditId) : Promise.resolve(false))
+      .finally(() => { if (!cancelled) setRefreshing(false); });
+    return () => { cancelled = true; };
   }, [auditId]);
 
-  const fetchReportData = async () => {
-    setLoading(true);
-    try {
-      // Fetch audit
-      const { data: audit, error: auditError } = await getAuditById(auditId);
-      if (auditError || !audit)
-        throw new Error(auditError || "Audit not found");
+  const audit = useLiveQuery(() => db.audits.get(auditId), [auditId]);
+  const items = useLiveQuery(() => db.auditItems.where("auditId").equals(auditId).toArray(), [auditId]);
+  const photos = useLiveQuery(() => db.photos.where("auditId").equals(auditId).sortBy("createdAt"), [auditId]);
+  const photoUrls = usePhotoUrls(photos);
 
-      // Fetch summary
-      const { data: summary } = await getAuditSummary(auditId);
+  useEffect(() => {
+    if (audit?.checklist_id) getChecklist(audit.checklist_id).then(setChecklist);
+  }, [audit?.checklist_id]);
 
-      // Fetch auditor profile
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("name, email")
-        .eq("id", audit.user_id)
-        .single();
+  const reportData: ReportData | null = useMemo(() => {
+    if (!audit || !checklist || !items) return null;
+    const byItem = new Map(items.map(i => [i.checklistItemId, i]));
+    return {
+      audit,
+      summary: audit,
+      auditorName: audit.auditor_name || "Não identificado",
+      locationName: audit.location_full || audit.location_name || audit.location || "Não informado",
+      sections: checklist.sections.map(section => ({
+        title: section.title,
+        items: section.items.map(item => ({
+          description: item.description,
+          result: byItem.get(item.id)?.result ?? null,
+          observation: byItem.get(item.id)?.observation ?? null,
+          images: (photos ?? [])
+            .filter(p => p.checklistItemId === item.id)
+            .map(p => photoUrls.get(p.id))
+            .filter((u): u is string => !!u),
+        })),
+      })),
+    };
+  }, [audit, checklist, items, photos, photoUrls]);
 
-      // Fetch location
-      let locationName = audit.location || "Não informado";
-      if (audit.location_id) {
-        const { data: location } = await supabase
-          .from("audit_locations")
-          .select("name, address, city, state")
-          .eq("id", audit.location_id)
-          .single();
-        if (location) {
-          locationName = location.name;
-          if (location.address) locationName += `, ${location.address}`;
-          if (location.city) locationName += ` - ${location.city}`;
-          if (location.state) locationName += `/${location.state}`;
-        }
-      }
-
-      // Fetch checklist with sections
-      const { data: checklistData } = await getChecklistWithSections(
-        audit.checklist_id
-      );
-
-      // Fetch audit items
-      const { data: auditItems } = await getAuditItems(auditId);
-
-      // Fetch images for each audit item
-      const auditItemIds = auditItems?.map((item) => item.id) || [];
-      const { data: allImages } = await supabase
-        .from("audit_item_images")
-        .select("audit_item_id, image_url")
-        .in("audit_item_id", auditItemIds);
-
-      // Build sections with results
-      const sections =
-        checklistData?.sections.map((section) => ({
-          title: section.title,
-          items: section.items.map((item) => {
-            const auditItem = auditItems?.find(
-              (ai) => ai.checklist_item_id === item.id
-            );
-            const itemImages =
-              allImages
-                ?.filter((img) =>
-                  auditItems?.find(
-                    (ai) =>
-                      ai.checklist_item_id === item.id &&
-                      ai.id === img.audit_item_id
-                  )
-                )
-                .map((img) => img.image_url) || [];
-
-            return {
-              description: item.description,
-              result: auditItem?.result || null,
-              observation: auditItem?.observation || null,
-              images: itemImages,
-            };
-          }),
-        })) || [];
-
-      setReportData({
-        audit,
-        summary,
-        auditorName: profile?.name || profile?.email || "Não identificado",
-        locationName,
-        sections,
-      });
-    } catch (error) {
-      console.error("[AuditReportPage] Error fetching report data:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const loading = !reportData && (refreshing || audit === undefined);
 
   const formatDate = (dateString: string | null) => {
     if (!dateString) return "-";
@@ -202,27 +145,6 @@ export const AuditReportPage = ({ auditId, onBack }: AuditReportPageProps) => {
       default:
         return <MinusCircle className="w-5 h-5 text-muted-foreground" />;
     }
-  };
-
-  const getSignedImage = async (path: string) => {
-    const { data, error } = await supabase.storage
-      .from("audit-images")
-      .createSignedUrl(path, 60 * 60);
-
-    if (error || !data?.signedUrl) return null;
-    return data.signedUrl;
-  };
-
-  const imageToBase64 = async (url: string): Promise<string> => {
-    const res = await fetch(url);
-    const blob = await res.blob();
-
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onloadend = () => resolve(reader.result as string);
-      reader.onerror = reject;
-      reader.readAsDataURL(blob);
-    });
   };
 
 const generatePDF = async () => {

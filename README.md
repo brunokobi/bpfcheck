@@ -1,11 +1,12 @@
 # BPF Check — Sistema de Auditorias Sanitárias
 
-![Version](https://img.shields.io/badge/versão-1.1.0-blue)
+![Version](https://img.shields.io/badge/versão-2.0.0-blue)
 ![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)
 ![Vite](https://img.shields.io/badge/Vite-5-646CFF?logo=vite&logoColor=white)
 ![Tailwind CSS](https://img.shields.io/badge/Tailwind-3-06B6D4?logo=tailwindcss&logoColor=white)
-![Supabase](https://img.shields.io/badge/Supabase-Backend-3ECF8E?logo=supabase&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-Backend-009688?logo=fastapi&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)
 ![PWA](https://img.shields.io/badge/PWA-Offline--First-5A0FC8?logo=pwa&logoColor=white)
 [![Google Play](https://img.shields.io/badge/Google_Play-Disponível-414141?logo=google-play&logoColor=white)](https://play.google.com/store/apps/details?id=app.netlify.bpfcheck.twa)
 ![Deploy](https://img.shields.io/badge/Deploy-Netlify-00C7B7?logo=netlify&logoColor=white)
@@ -24,7 +25,7 @@ O sistema suporta funcionamento **offline-first** — auditorias podem ser reali
 - **Auditorias por Seção** — Navegação por seções do checklist RDC 216/2004 com progresso individual
 - **Auto-save** — Respostas e observações salvas automaticamente a cada interação
 - **Fotos por Item** — Captura de fotos diretamente pelo dispositivo para evidências
-- **Modo Offline** — Funciona sem internet; auditorias, itens e fotos são sincronizados ao reconectar
+- **Modo Offline** — Abre e funciona sem internet (inclusive a primeira tela); auditorias, respostas, observações e fotos ficam no aparelho e são enviadas sozinhas ao reconectar
 - **PWA Instalável** — Disponível na Google Play Store e instalável em qualquer dispositivo
 
 ---
@@ -33,158 +34,123 @@ O sistema suporta funcionamento **offline-first** — auditorias podem ser reali
 
 | Camada | Tecnologia |
 |---|---|
-| Frontend | React 18 + TypeScript + Vite |
+| Frontend | React 18 + TypeScript + Vite (hospedado no Netlify) |
 | Estilização | Tailwind CSS + shadcn/ui |
-| Backend | Supabase (PostgreSQL + Storage + Auth) |
-| Offline | IndexedDB (Dexie.js) |
-| Deploy | Netlify |
-| PWA | vite-plugin-pwa |
+| Backend | API própria em FastAPI (`api/`) na vpsrafa — `https://bpfcheck-api.brunokobi.tech` |
+| Banco | PostgreSQL 16 (container dedicado) + fotos em volume Docker |
+| Offline | IndexedDB (Dexie.js) + service worker (vite-plugin-pwa/Workbox) |
+| Chat IA | n8n na vpsrafa, via função Netlify `/.netlify/functions/chat` |
+
+> Até a versão 1.x o backend era o Supabase. A migração está descrita em [Migração do Supabase](#migração-do-supabase).
 
 ---
 
 ## Offline-First
 
-A arquitetura offline funciona em duas camadas:
+O banco local do aparelho é a fonte de verdade da interface; a API só alimenta esse banco e recebe as alterações.
 
-- **Dexie (IndexedDB)** — Fila de sincronização de fotos (`syncQueue`) e cache de checklist (`cache`)
-- **useOfflineStorage** — Fila de auditorias e itens (`pending_syncs`)
-- **useSyncWorker** — Processa a fila automaticamente ao reconectar, com mapeamento de IDs temporários para IDs reais
-
-O checklist é cacheado na primeira abertura online e fica disponível para sessões offline subsequentes.
+- **App shell em cache** — o service worker (`sw.js`, gerado pelo `vite-plugin-pwa`) guarda HTML/JS/CSS/ícones, então o app abre sem internet, inclusive dentro da TWA da Play Store.
+- **Banco local** (`src/lib/localdb.ts`, Dexie `bpfcheck`) — checklist, auditorias, respostas, fotos e a fila de envio (`outbox`).
+- **IDs gerados no aparelho** — auditorias e fotos usam `crypto.randomUUID()`, então não existe "ID temporário" para remapear.
+- **Fila única** (`src/lib/sync.ts`) — toda alteração vira uma operação idempotente (`PUT`) enviada em ordem; repetir é seguro. Roda ao abrir o app, ao reconectar, ao voltar para a aba e a cada 30 s. Falha temporária (rede, 5xx) para a fila e tenta depois; erro de validação tira a operação da fila e aparece um aviso com "Tentar novamente".
+- **Conflitos** — cada resposta leva o horário do aparelho; o servidor só aceita a versão mais nova (last-write-wins por item).
+- **Fotos** — reduzidas para no máximo 1600px (JPEG 80%) antes de guardar e enviar.
+- **Checklist** — baixado a cada abertura online; é preciso abrir o app online uma vez antes de usar offline.
+- **Versão antiga** — na primeira abertura, `src/lib/legacy.ts` importa o que tinha ficado preso nas filas offline da versão 1.x.
 
 ---
 
 ## Como Rodar
 
-**Pré-requisitos:** Node.js 18+
+**Pré-requisitos:** Node.js 18+ e Python 3.12 (só para a API)
 
 ```bash
-# Instalar dependências
+# Frontend (http://localhost:8080) — aponta para a API de produção por padrão
 npm install
-
-# Servidor de desenvolvimento
 npm run dev
+
+# Para usar uma API local: crie .env.local com
+# VITE_API_URL=http://localhost:8000
 
 # Build de produção
 npm run build
 ```
 
-Acesse em `http://localhost:5173`.
+API e testes (Postgres embutido via `pgserver`, não precisa de Docker):
+
+```bash
+cd api
+python3.12 -m venv .venv && . .venv/bin/activate
+pip install -r requirements.txt -r requirements-dev.txt
+pytest -q
+```
 
 ---
 
-## Banco de Dados — Supabase
+## Backend — API própria
 
-O backend utiliza **PostgreSQL via Supabase** com 9 tabelas. Autenticação gerenciada pelo Supabase Auth (tabela `auth.users`).
+Código em `api/` (FastAPI + psycopg). O schema fica em `api/schema.sql` e é aplicado na subida da API (idempotente).
 
-```
-profiles ──────────────── auth.users (1:1)
-user_roles ─────────────── profiles
-checklists
-  └── checklist_sections
-        └── checklist_items
-audits ──────────────────── checklists + audit_locations
-  └── audit_items ──────── checklist_items
-        └── audit_item_images
-audit_summary ───────────── audits (1:1)
-audit_locations ─────────── profiles
-```
+| Rota | Função |
+|---|---|
+| `POST /auth/signup`, `POST /auth/login`, `GET /auth/me` | Cadastro/login com e-mail e senha (bcrypt), token JWT de 60 dias renovado a cada abertura online |
+| `POST /auth/password` | Troca de senha pelo próprio usuário |
+| `POST /admin/reset-password` | Admin redefine a senha de alguém (não há envio de e-mail) |
+| `GET /checklists/{id\|default}` | Checklist com seções e itens |
+| `GET /audits`, `GET /audits/{id}` | Lista (com contagens e conformidade) e detalhe com respostas e fotos. Admin vê todas |
+| `PUT /audits/{id}` | Cria/atualiza auditoria (id gerado no app) |
+| `PUT /audits/{id}/items` | Grava respostas em lote (last-write-wins por `updated_at`) |
+| `POST /audits/{id}/finalize` | Valida o checklist completo e conclui (409 se incompleto) |
+| `PUT /audits/{id}/items/{itemId}/images/{imageId}` | Upload de foto (idempotente) |
+| `GET /files/{imageId}?exp&sig` | Foto via URL assinada (HMAC, 7 dias) — o storage não é público |
 
 ### Tabelas
 
-**`profiles`** — Perfil do usuário
-| Coluna | Tipo | Obrigatório |
-|---|---|---|
-| `id` | uuid (PK) | Sim |
-| `name` | text | — |
-| `email` | text | — |
-| `created_at` | timestamptz | — |
+```
+users (e-mail, nome, hash bcrypt, role admin|user)
+checklists └── checklist_sections └── checklist_items
+audit_locations ── users
+audits ── users, checklists, audit_locations
+  └── audit_items ── checklist_items   (UNIQUE audit_id + checklist_item_id)
+        └── audit_item_images          (arquivo no volume /data/uploads)
+```
 
-**`user_roles`** — Controle de acesso (Administrador / Usuário)
-| Coluna | Tipo | Obrigatório |
-|---|---|---|
-| `id` | uuid (PK) | Sim |
-| `user_id` | uuid (FK → profiles) | Sim |
-| `role` | enum | Sim |
-| `created_at` | timestamptz | — |
+Resumo de conformidade (antes `audit_summary`) é calculado na consulta. Perfis e papéis (antes `profiles`/`user_roles`) foram unificados em `users`.
 
-**`checklists`** — Checklists de auditoria
-| Coluna | Tipo | Obrigatório |
-|---|---|---|
-| `id` | uuid (PK) | Sim |
-| `user_id` | uuid | — |
-| `name` | text | Sim |
-| `description` | text | — |
-| `is_default` | boolean | — |
-| `created_at` | timestamptz | — |
+---
 
-**`checklist_sections`** — Seções de um checklist
-| Coluna | Tipo | Obrigatório |
-|---|---|---|
-| `id` | uuid (PK) | Sim |
-| `checklist_id` | uuid (FK → checklists) | Sim |
-| `title` | text | Sim |
-| `order_index` | integer | Sim |
-| `created_at` | timestamptz | — |
+## Deploy
 
-**`checklist_items`** — Itens de cada seção
-| Coluna | Tipo | Obrigatório |
-|---|---|---|
-| `id` | uuid (PK) | Sim |
-| `section_id` | uuid (FK → checklist_sections) | Sim |
-| `description` | text | Sim |
-| `order_index` | integer | Sim |
-| `created_at` | timestamptz | — |
+### API na vpsrafa
 
-**`audit_locations`** — Estabelecimentos cadastrados
-| Coluna | Tipo | Obrigatório |
-|---|---|---|
-| `id` | uuid (PK) | Sim |
-| `user_id` | uuid (FK → profiles) | Sim |
-| `name` | text | Sim |
-| `address` | text | — |
-| `city` | text | — |
-| `state` | text | — |
-| `created_at` | timestamptz | — |
+```bash
+# na VPS (ver ~/vpsOracleBruno para acesso)
+mkdir -p ~/apps/bpfcheck-api && cd ~/apps/bpfcheck-api
+# copiar o conteúdo de api/ para cá
+cp .env.example .env && chmod 600 .env   # preencher POSTGRES_PASSWORD e JWT_SECRET (openssl rand -hex 32)
+docker compose up -d --build
+curl https://bpfcheck-api.brunokobi.tech/health
+```
 
-**`audits`** — Registros de auditoria
-| Coluna | Tipo | Obrigatório |
-|---|---|---|
-| `id` | uuid (PK) | Sim |
-| `user_id` | uuid (FK → profiles) | Sim |
-| `checklist_id` | uuid (FK → checklists) | Sim |
-| `location_id` | uuid (FK → audit_locations) | — |
-| `location` | text | — |
-| `status` | text | — |
-| `started_at` | timestamptz | — |
-| `finished_at` | timestamptz | — |
+O roteamento é feito pelo Traefik do Coolify via labels (rede `coolify`), domínio coberto pelo wildcard `*.brunokobi.tech` do Cloudflare.
 
-**`audit_items`** — Respostas por item de checklist
-| Coluna | Tipo | Obrigatório |
-|---|---|---|
-| `id` | uuid (PK) | Sim |
-| `audit_id` | uuid (FK → audits) | Sim |
-| `checklist_item_id` | uuid (FK → checklist_items) | Sim |
-| `result` | text (`conforme` \| `nao_conforme` \| `nao_aplicavel`) | — |
-| `observation` | text | — |
-| `updated_at` | timestamptz | — |
+### Frontend no Netlify
 
-**`audit_item_images`** — Fotos de evidência por item
-| Coluna | Tipo | Obrigatório |
-|---|---|---|
-| `id` | uuid (PK) | Sim |
-| `audit_item_id` | uuid (FK → audit_items) | Sim |
-| `image_url` | text | Sim |
-| `created_at` | timestamptz | — |
+O frontend continua em `bpfcheck.netlify.app` — a TWA da Play Store (`app.netlify.bpfcheck.twa`) depende desse domínio. Variáveis do site no Netlify:
 
-**`audit_summary`** — Totais de conformidade por auditoria
-| Coluna | Tipo | Obrigatório |
-|---|---|---|
-| `audit_id` | uuid (PK/FK → audits) | Sim |
-| `conforme_count` | integer | — |
-| `nao_conforme_count` | integer | — |
-| `nao_aplicavel_count` | integer | — |
-| `last_updated` | timestamptz | — |
+| Variável | Valor |
+|---|---|
+| `VITE_API_URL` | `https://bpfcheck-api.brunokobi.tech` (opcional, já é o padrão) |
+| `N8N_CHAT_WEBHOOK_URL` | URL do Chat Trigger do workflow no n8n da vpsrafa |
+
+### Migração do Supabase
+
+Script `api/scripts/migrate_from_supabase.py`: copia usuários (com a mesma senha), checklist, locais, auditorias, respostas e fotos, preservando os ids. Pode ser repetido.
+
+```bash
+docker compose exec -e SUPABASE_DB_URL='postgresql://postgres:<senha>@db.<ref>.supabase.co:5432/postgres' \
+  bpfcheck-api python scripts/migrate_from_supabase.py --dry-run   # depois sem --dry-run
+```
 
 ---
 
@@ -227,6 +193,10 @@ Switch que direciona para um dos 8 agentes especialistas conforme a intenção d
 ### Memória compartilhada
 
 Todos os agentes compartilham a mesma **Buffer Window Memory**, mantendo o contexto da conversa independentemente de quantas trocas de agente ocorrerem na sessão.
+
+### Onde roda
+
+O workflow está versionado em `n8n/bpfcheck-multiagent.workflow.json` (exportado do n8n antigo, sem credenciais). Para publicar: importar no n8n da vpsrafa (`n8n.brunokobi.tech`), associar a credencial do Google Gemini nos dois nós "Gemini", ativar e copiar a URL do **Chat Trigger** para a variável `N8N_CHAT_WEBHOOK_URL` do Netlify.
 
 ### Tecnologias do agente
 

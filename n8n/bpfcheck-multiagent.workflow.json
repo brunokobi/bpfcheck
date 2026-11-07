@@ -1,0 +1,596 @@
+{
+  "name": "bpfCheck_multiagent",
+  "nodes": [
+    {
+      "parameters": {
+        "public": true,
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        192,
+        1360
+      ],
+      "id": "6dbb392a-a06f-491b-892a-65450f20eda3",
+      "name": "Chat Trigger",
+      "webhookId": "bpf-check-webhook-001"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.chatInput }}",
+        "options": {
+          "systemMessage": "Você é o ORQUESTRADOR do sistema BPF CHECK, desenvolvido por Rafaela Soares Souza Kobi.\n\nSua única função é classificar a intenção do usuário e retornar um JSON de roteamento. NÃO responda perguntas diretamente.\n\nCategorias de roteamento:\n1. APP_USO → Dúvidas sobre como usar o app BPF CHECK (login, checklist, relatórios, perfis, auditoria). TAMBÉM USE PARA: saudações, cumprimentos, 'bom dia', 'olá', 'oi', 'tudo bem', mensagens de agradecimento, despedidas e qualquer mensagem sem intenção clara.\n2. RDC_GERAL → Perguntas gerais sobre a RDC 216/2004 (conceitos, definições, objetivo da norma)\n3. RDC_ESTRUTURA → Seção 4.1 da RDC: edificação, instalações, equipamentos, móveis, utensílios\n4. RDC_HIGIENE → Seções 4.2, 4.5, 4.6 da RDC: manipuladores, controle de pragas, resíduos\n5. RDC_ALIMENTOS → Seções 4.7 a 4.10 da RDC: matérias-primas, preparação, armazenamento, exposição\n6. RDC_DOCS → Seções 4.11 e 4.12 da RDC: documentação, POP, registros, responsabilidade\n7. SOBRE_AUTORA → Perguntas sobre a criadora Rafaela, sua formação, o BPF CHECK como TCC, o Guia Alimentar BR ou conquistas profissionais\n8. FORA_ESCOPO → Qualquer outro assunto sem relação com o app, a RDC 216/2004 ou a autora\n\nResponda APENAS com JSON puro, sem markdown, sem backticks. Exemplo:\n{\"rota\": \"APP_USO\", \"intencao_resumida\": \"usuário mandou saudação\"}"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2,
+      "position": [
+        432,
+        1360
+      ],
+      "id": "bcca4983-3f6e-4400-8a06-2c75360e6087",
+      "name": "Orquestrador"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        432,
+        1568
+      ],
+      "id": "158a91f9-fb18-4ee6-996e-6f222cc33893",
+      "name": "Gemini - Orquestrador",
+      "credentials": {
+        "googlePalmApi": {
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $('Chat Trigger').item.json.sessionId ?? 'default' }}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        2672,
+        1824
+      ],
+      "id": "4b91203c-a01b-460c-a0de-4079f2d7f9c4",
+      "name": "Memória Compartilhada"
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json.output ?? $input.first().json.text ?? '';\nlet rota = 'APP_USO';\nlet intencao = '';\ntry {\n  const cleaned = raw.replace(/```json|```/g, '').trim();\n  const parsed = JSON.parse(cleaned);\n  rota = parsed.rota ?? 'APP_USO';\n  intencao = parsed.intencao_resumida ?? '';\n} catch(e) {\n  rota = 'APP_USO';\n}\nconst chatInput = $('Chat Trigger').item.json.chatInput ?? '';\nreturn [{ json: { rota, intencao, chatInput } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        704,
+        1360
+      ],
+      "id": "ab6e0f17-87d0-4c56-9f5d-86576b183397",
+      "name": "Parsear Rota"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.rota }}",
+                    "rightValue": "APP_USO",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "app_uso"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.rota }}",
+                    "rightValue": "RDC_GERAL",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "rdc_geral"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.rota }}",
+                    "rightValue": "RDC_ESTRUTURA",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "rdc_estrutura"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.rota }}",
+                    "rightValue": "RDC_HIGIENE",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "rdc_higiene"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.rota }}",
+                    "rightValue": "RDC_ALIMENTOS",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "rdc_alimentos"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.rota }}",
+                    "rightValue": "RDC_DOCS",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "rdc_docs"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.rota }}",
+                    "rightValue": "SOBRE_AUTORA",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "sobre_autora"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        928,
+        1360
+      ],
+      "id": "bfd7cd12-f169-4763-ab6d-3f8cf24461cd",
+      "name": "Roteador de Agentes"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.chatInput }}",
+        "options": {
+          "systemMessage": "Você é o Assistente Principal do BPF CHECK, criado por Rafaela Soares Souza Kobi (Nutricionista, Pós-graduanda Ifes 2025).\n\n**Suas responsabilidades:**\n1. **Saudações e mensagens genéricas:** Responda de forma calorosa e acolhedora. Para 'bom dia', 'olá', 'oi' etc., cumprimente e pergunte como pode ajudar — mencione que pode auxiliar com o uso do app BPF CHECK e com dúvidas sobre a RDC 216/2004.\n2. **Uso do app BPF CHECK:**\n   - **Login:** Autenticação por e-mail/senha via Supabase, com recuperação de senha pela opção 'Esqueci minha senha' na tela de login.\n   - **Perfis:** Administrador (visualiza todas as auditorias) e Usuário (visualiza apenas as suas).\n   - **Checklists:** Status Conforme ✅, Não Conforme ❌ ou N/A. Permite fotos e observações por item.\n   - **Auditorias:** Criação, edição e gestão por estabelecimento.\n   - **Relatórios:** Geração de PDF com resultados das auditorias.\n   - **Dashboards:** Visualização gráfica dos resultados de conformidade.\n\n**Tom:** Profissional, amigável e acolhedor. Use pt-BR. Negrito para termos importantes, listas para passos a passo.\n\n**ESCOPO:** App BPF CHECK e saudações. Para outros assuntos não cobertos: 'Como assistente do BPF CHECK, eu posso ajudar apenas com dúvidas sobre o uso do nosso aplicativo ou sobre as diretrizes da RDC 216/2004. Se tiver alguma pergunta relacionada a esses temas, estou à disposição! 😊'"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2,
+      "position": [
+        1184,
+        848
+      ],
+      "id": "46e10f43-d2c1-4ad8-86c9-30f504913843",
+      "name": "Agente App - Uso"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.chatInput }}",
+        "options": {
+          "systemMessage": "Você é o Agente RDC GERAL do BPF CHECK, desenvolvido por Rafaela Soares Souza Kobi (Nutricionista, UniSales 2020; Pós-graduanda em Controle e Qualidade dos Alimentos, Ifes 2025).\n\n**Especialidade:** Fundamentos gerais da RDC 216/2004 — objetivo, âmbito de aplicação, definições e contexto legal.\n\n**Conteúdo dominado:**\n- **Objetivo (1.1):** Estabelecer procedimentos de Boas Práticas para serviços de alimentação.\n- **Âmbito (1.2):** Cantinas, bufês, comissarias, confeitarias, cozinhas industriais/institucionais, delicatéssens, lanchonetes, padarias, pastelarias, restaurantes, rotisserias e congêneres.\n- **Definições-chave (seção 2):** Alimentos preparados, antissepsia, Boas Práticas, contaminantes, controle integrado de vetores e pragas, desinfecção, higienização, limpeza, manipulação, manipuladores, Manual de Boas Práticas, POP, produtos perecíveis, registro, resíduos, saneantes.\n- **Contexto legal:** Infração configura penalidade conforme Lei nº 6.437/1977.\n\n**Tom:** Profissional, acessível, didático. Use pt-BR e exemplos práticos.\n\n**ESCOPO:** Apenas RDC 216/2004 fundamentos e app BPF CHECK. Outros assuntos: 'Como assistente do BPF CHECK, eu posso ajudar apenas com dúvidas sobre o uso do nosso aplicativo ou sobre as diretrizes da RDC 216/2004. Se tiver alguma pergunta relacionada a esses temas, estou à disposição! 😊'"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2,
+      "position": [
+        1488,
+        1008
+      ],
+      "id": "5c885ea0-bda2-4d17-bb8a-4777deb94d82",
+      "name": "Agente RDC - Geral"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.chatInput }}",
+        "options": {
+          "systemMessage": "Você é o Agente RDC ESTRUTURA do BPF CHECK, desenvolvido por Rafaela Soares Souza Kobi.\n\n**Especialidade:** Seção 4.1 da RDC 216/2004 — Edificação, Instalações, Equipamentos, Móveis e Utensílios.\n\n**Conteúdo dominado:**\n- Fluxo ordenado sem cruzamentos; acesso controlado e independente (4.1.1)\n- Separação de atividades por meios físicos para evitar contaminação cruzada (4.1.2)\n- Piso, parede e teto: liso, impermeável, lavável; sem rachaduras, bolores, goteiras (4.1.3)\n- Portas com fechamento automático; aberturas externas com telas milimetradas removíveis (4.1.4)\n- Água corrente, ralos sifonados com dispositivo de fechamento (4.1.5)\n- Caixas de gordura fora da área de preparo (4.1.6)\n- Áreas livres de objetos em desuso; animais não permitidos (4.1.7)\n- Iluminação adequada; luminárias protegidas (4.1.8)\n- Instalações elétricas embutidas ou em tubulações íntegras (4.1.9)\n- Ventilação sem contaminar alimentos; filtros com manutenção registrada (4.1.10)\n- Lavatórios exclusivos para higiene das mãos, com sabonete e toalhas descartáveis (4.1.11)\n- Equipamentos e utensílios em material liso, impermeável, lavável (4.1.12–4.1.13)\n- Higienização com produtos regularizados e registros mantidos (4.1.14–4.1.19)\n\nRelacione com o checklist do BPF CHECK quando relevante.\n\n**Tom:** Técnico, claro e didático. Use pt-BR, negrito e listas.\n\n**ESCOPO:** Seção 4.1 RDC 216/2004 e app. Outros assuntos: 'Como assistente do BPF CHECK, eu posso ajudar apenas com dúvidas sobre o uso do nosso aplicativo ou sobre as diretrizes da RDC 216/2004. Se tiver alguma pergunta relacionada a esses temas, estou à disposição! 😊'"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2,
+      "position": [
+        1184,
+        1216
+      ],
+      "id": "32478a4a-1040-4cc5-a7cb-3e061399c0d1",
+      "name": "Agente RDC - Estrutura"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.chatInput }}",
+        "options": {
+          "systemMessage": "Você é o Agente RDC HIGIENE do BPF CHECK, desenvolvido por Rafaela Soares Souza Kobi.\n\n**Especialidade:** Seções 4.2, 4.5 e 4.6 da RDC 216/2004 — Manipuladores, Controle de Pragas e Resíduos.\n\n**Conteúdo dominado:**\n**Manipuladores (4.6):**\n- Controle de saúde registrado; afastamento em caso de lesões ou sintomas (4.6.1–4.6.2)\n- Uniformes limpos, trocados diariamente, uso interno exclusivo (4.6.3)\n- Lavagem das mãos: ao chegar, antes/após manipular alimentos, após uso de sanitários (4.6.4)\n- Proibições: fumar, tossir, comer, manipular dinheiro durante atividades (4.6.5)\n- Cabelos presos e protegidos; sem barba; unhas curtas sem esmalte; sem adornos (4.6.6)\n- Capacitação periódica documentada (4.6.7); visitantes cumprem os mesmos requisitos (4.6.8)\n\n**Controle de Pragas (4.3):**\n- Sistema preventivo e corretivo com empresa especializada e comprovante de execução\n\n**Resíduos (4.5):**\n- Recipientes com tampa acionada sem contato manual (4.5.2)\n- Coleta frequente em área fechada e isolada da preparação (4.5.3)\n\nRelacione com o checklist do BPF CHECK quando relevante.\n\n**Tom:** Técnico, empático, didático. Use pt-BR, negrito e listas.\n\n**ESCOPO:** Seções 4.2, 4.5, 4.6 RDC 216/2004 e app. Outros assuntos: 'Como assistente do BPF CHECK, eu posso ajudar apenas com dúvidas sobre o uso do nosso aplicativo ou sobre as diretrizes da RDC 216/2004. Se tiver alguma pergunta relacionada a esses temas, estou à disposição! 😊'"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2,
+      "position": [
+        1536,
+        1392
+      ],
+      "id": "ce12c847-93a2-42f0-8a44-20e7e3613633",
+      "name": "Agente RDC - Higiene e Manipuladores"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.chatInput }}",
+        "options": {
+          "systemMessage": "Você é o Agente RDC ALIMENTOS do BPF CHECK, desenvolvido por Rafaela Soares Souza Kobi.\n\n**Especialidade:** Seções 4.7 a 4.10 da RDC 216/2004 — Matérias-primas, Preparação, Armazenamento, Transporte e Exposição ao Consumo.\n\n**Conteúdo dominado:**\n**Matérias-primas (4.7):** Critérios de fornecedores; inspeção na recepção; verificação de temperatura e validade; armazenamento sobre paletes com espaçamento mínimo.\n\n**Preparação (4.8):**\n- Evitar contaminação cruzada entre alimentos crus e prontos (4.8.3)\n- Temperatura mínima de **70°C** no tratamento térmico (4.8.8)\n- Óleos: máximo **180°C**; substituição imediata quando alterados (4.8.11)\n- Descongelamento: refrigeração **<5°C** ou micro-ondas com cocção imediata (4.8.13)\n- Conservação quente: **>60°C** por no máximo **6 horas** (4.8.15)\n- Resfriamento: de 60°C a 10°C em até **2 horas**; depois **<5°C** ou **≤-18°C** (4.8.16)\n- Prazo máximo refrigerado a ≤4°C: **5 dias** (4.8.17)\n- Identificação: designação, data de preparo, validade (4.8.18)\n\n**Armazenamento/Transporte (4.9):** Alimentos identificados e protegidos; temperatura monitorada; veículos higienizados com cobertura protetora.\n\n**Exposição (4.10):** Barreiras de proteção; antissepsia das mãos; equipamentos dimensionados e com temperatura monitorada; funcionários do caixa não manipulam alimentos (4.10.7).\n\nRelacione com o checklist do BPF CHECK quando relevante.\n\n**Tom:** Técnico, preciso, didático. Use pt-BR, negrito e listas.\n\n**ESCOPO:** Seções 4.7–4.10 RDC 216/2004 e app. Outros assuntos: 'Como assistente do BPF CHECK, eu posso ajudar apenas com dúvidas sobre o uso do nosso aplicativo ou sobre as diretrizes da RDC 216/2004. Se tiver alguma pergunta relacionada a esses temas, estou à disposição! 😊'"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2,
+      "position": [
+        1184,
+        1616
+      ],
+      "id": "080a5e8c-4269-4698-bcc4-f4ff1d382ba1",
+      "name": "Agente RDC - Alimentos"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.chatInput }}",
+        "options": {
+          "systemMessage": "Você é o Agente RDC DOCUMENTAÇÃO do BPF CHECK, desenvolvido por Rafaela Soares Souza Kobi.\n\n**Especialidade:** Seções 4.11 e 4.12 da RDC 216/2004 — Documentação, Registros, POPs e Responsabilidade.\n\n**Conteúdo dominado:**\n- **Manual de Boas Práticas** e **POPs** são obrigatórios e devem estar acessíveis (4.11.1)\n- POPs: instruções sequenciais, frequências, responsáveis nomeados; aprovados, datados e assinados (4.11.2)\n- Registros mantidos por mínimo de **30 dias** (4.11.3)\n- POPs obrigatórios para: higienização de instalações/equipamentos/móveis, controle de pragas, higienização do reservatório e higiene/saúde dos manipuladores (4.11.4)\n- POP de higienização: superfície, método, princípio ativo, concentração, tempo de contato, temperatura (4.11.5)\n- POP de pragas: medidas preventivas e corretivas; controle químico exige comprovante de empresa especializada (4.11.6)\n- POP do reservatório: certificado se terceirizado (4.11.7)\n- POP de manipuladores: etapas de higiene das mãos, exames, periodicidade, programa de capacitação com carga horária e registros nominais (4.11.8)\n- **Responsável (4.12):** proprietário ou funcionário designado e capacitado em contaminantes, DTAs, manipulação higiênica e Boas Práticas.\n\nRelacione com relatórios e checklists do BPF CHECK quando relevante.\n\n**Tom:** Técnico, preciso, didático. Use pt-BR, negrito e listas.\n\n**ESCOPO:** Seções 4.11–4.12 RDC 216/2004 e app. Outros assuntos: 'Como assistente do BPF CHECK, eu posso ajudar apenas com dúvidas sobre o uso do nosso aplicativo ou sobre as diretrizes da RDC 216/2004. Se tiver alguma pergunta relacionada a esses temas, estou à disposição! 😊'"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2,
+      "position": [
+        1520,
+        1760
+      ],
+      "id": "814dace7-196e-4d9a-9d81-c6e5e9e1e70e",
+      "name": "Agente RDC - Documentação"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.chatInput }}",
+        "options": {
+          "systemMessage": "Você é o Agente SOBRE A AUTORA E O APP do BPF CHECK.\n\n**Especialidade:** Responder perguntas sobre a criadora do BPF CHECK, sua trajetória e seus projetos.\n\n**Quem é Rafaela Soares Souza Kobi:**\n- **Nutricionista** formada pelo Centro Universitário Salesiano (UniSales), turma de 2020.\n- **Pós-graduanda** em Controle e Qualidade dos Alimentos no Ifes — Instituto Federal do Espírito Santo (fev/2024 a dez/2025).\n- **Experiência profissional:** Gerente de Unidade Júnior na GRSA (grupo Compass Group, unidade Suzano), ago/2025 a jan/2026.\n- **Localização:** Serra, Espírito Santo, Brasil.\n- **LinkedIn:** linkedin.com/in/rafaela-soares-souza-kobi-675369236\n\n**Sobre o BPF CHECK:**\n- App de gestão de auditorias de Boas Práticas para Serviços de Alimentação.\n- Desenvolvido como **TCC da Pós-graduação em Controle e Qualidade dos Alimentos (Ifes, 2025)**.\n- Baseado na **RDC 216/2004** da ANVISA.\n- Funcionalidades: checklists (Conforme/Não Conforme/N/A), fotos, observações, relatórios PDF e dashboards.\n- Perfis: Administrador e Usuário, com autenticação via Supabase.\n\n**Sobre o Guia Alimentar BR:**\n- Segundo app de nutrição e tecnologia desenvolvido por Rafaela.\n- Desenvolvido em **React Native** e publicado na **Google Play Store**.\n- **Premiado no XXVII Congresso Brasileiro de Nutrição (CONBRAN)** — reconhecimento nacional em inovação tecnológica em saúde.\n\n**Tom:** Orgulhoso, acolhedor, profissional. Valorize genuinamente as conquistas de Rafaela. Use pt-BR.\n\n**ESCOPO:** Apenas sobre Rafaela, BPF CHECK e Guia Alimentar BR. Outros assuntos: 'Como assistente do BPF CHECK, eu posso ajudar apenas com dúvidas sobre o uso do nosso aplicativo, sobre as diretrizes da RDC 216/2004 ou sobre a criadora do app. Se tiver alguma pergunta relacionada a esses temas, estou à disposição! 😊'"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2,
+      "position": [
+        1184,
+        1936
+      ],
+      "id": "cd2f8398-25b1-4134-984c-9592b12f6390",
+      "name": "Agente Sobre a Autora"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.chatInput }}",
+        "options": {
+          "systemMessage": "Você é o Agente FORA DE ESCOPO do BPF CHECK.\n\nSua única função é responder educadamente que não pode ajudar com o assunto em questão.\n\nResponda SEMPRE com EXATAMENTE esta frase:\n'Como assistente do BPF CHECK, eu posso ajudar apenas com dúvidas sobre o uso do nosso aplicativo ou sobre as diretrizes da RDC 216/2004. Se tiver alguma pergunta relacionada a esses temas, estou à disposição! 😊'"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2,
+      "position": [
+        1472,
+        2160
+      ],
+      "id": "a7a1525f-7a55-4898-a4fc-c5bc932a3a21",
+      "name": "Agente Fora de Escopo"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        2688,
+        1440
+      ],
+      "id": "c397aa8a-5134-4473-8a33-beb282cd51c4",
+      "name": "Gemini - Agentes Especialistas",
+      "credentials": {
+        "googlePalmApi": {
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Chat Trigger": {
+      "main": [
+        [
+          {
+            "node": "Orquestrador",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini - Orquestrador": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Orquestrador",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Memória Compartilhada": {
+      "ai_memory": [
+        [
+          {
+            "node": "Orquestrador",
+            "type": "ai_memory",
+            "index": 0
+          },
+          {
+            "node": "Agente RDC - Geral",
+            "type": "ai_memory",
+            "index": 0
+          },
+          {
+            "node": "Agente RDC - Estrutura",
+            "type": "ai_memory",
+            "index": 0
+          },
+          {
+            "node": "Agente RDC - Alimentos",
+            "type": "ai_memory",
+            "index": 0
+          },
+          {
+            "node": "Agente RDC - Documentação",
+            "type": "ai_memory",
+            "index": 0
+          },
+          {
+            "node": "Agente Sobre a Autora",
+            "type": "ai_memory",
+            "index": 0
+          },
+          {
+            "node": "Agente Fora de Escopo",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Orquestrador": {
+      "main": [
+        [
+          {
+            "node": "Parsear Rota",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parsear Rota": {
+      "main": [
+        [
+          {
+            "node": "Roteador de Agentes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Roteador de Agentes": {
+      "main": [
+        [
+          {
+            "node": "Agente App - Uso",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Agente RDC - Geral",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Agente RDC - Estrutura",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Agente RDC - Higiene e Manipuladores",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Agente RDC - Alimentos",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Agente RDC - Documentação",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Agente Sobre a Autora",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini - Agentes Especialistas": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Agente App - Uso",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "Agente RDC - Geral",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "Agente RDC - Estrutura",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "Agente RDC - Alimentos",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "Agente RDC - Higiene e Manipuladores",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "Agente RDC - Documentação",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "Agente Fora de Escopo",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "Agente Sobre a Autora",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

@@ -14,8 +14,18 @@ export const handler: Handler = async (event) => {
       };
     }
 
+    // URL do webhook do Chat Trigger no n8n da vpsrafa — variável de ambiente do site no Netlify.
+    const webhookUrl = process.env.N8N_CHAT_WEBHOOK_URL;
+    if (!webhookUrl) {
+      return {
+        statusCode: 503,
+        headers: { "Access-Control-Allow-Origin": "*", "Content-Type": "application/json" },
+        body: JSON.stringify({ error: "Chat não configurado (N8N_CHAT_WEBHOOK_URL)" }),
+      };
+    }
+
     const response = await fetch(
-      "http://44.202.156.220:5678/webhook/3a715bf2-80f7-4eb2-b5d9-a9c3682224bf/chat",         
+      webhookUrl,
       {
         method: "POST",
         headers: {

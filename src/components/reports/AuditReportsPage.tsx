@@ -1,8 +1,7 @@
-import { useEffect, useState } from "react";
+import { useMemo } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Audit } from "@/lib/supabase-service";
-import { supabase } from "@/integrations/supabase/client";
+import { useAuditList } from "@/hooks/useAudits";
 import { ArrowLeft, ClipboardCheck, Loader2, Printer, Calendar, MapPin } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -14,57 +13,13 @@ interface AuditReportsPageProps {
 }
 
 export const AuditReportsPage = ({ onBack, onPrintAudit, isAdmin = false }: AuditReportsPageProps) => {
-  const [audits, setAudits] = useState<Array<Audit & { location_name?: string | null; auditor_name?: string | null }>>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    fetchCompletedAudits();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAdmin]);
-
-  const fetchCompletedAudits = async () => {
-    setLoading(true);
-    try {
-      // Mantém simples: a página de relatórios lista apenas auditorias concluídas, com ação de imprimir.
-      if (isAdmin) {
-        const { data, error } = await supabase
-          .from("audits")
-          .select(
-            `
-            *,
-            audit_locations(name),
-            profiles(name, email)
-          `
-          )
-          .eq("status", "completed")
-          .order("finished_at", { ascending: false });
-
-        if (error) throw error;
-
-        setAudits(
-          (data || []).map((a: any) => ({
-            ...a,
-            location_name: a.audit_locations?.name || a.location,
-            auditor_name: a.profiles?.name || a.profiles?.email,
-          }))
-        );
-      } else {
-        const { data, error } = await supabase
-          .from("audits")
-          .select("*")
-          .eq("status", "completed")
-          .order("finished_at", { ascending: false });
-
-        if (error) throw error;
-        setAudits(data || []);
-      }
-    } catch (e) {
-      console.error("[AuditReportsPage] Error fetching completed audits:", e);
-      setAudits([]);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const { audits: allAudits, loading } = useAuditList();
+  const audits = useMemo(
+    () => allAudits
+      .filter(a => a.status === "completed")
+      .sort((a, b) => (b.finished_at ?? "").localeCompare(a.finished_at ?? "")),
+    [allAudits],
+  );
 
   const formatDateTime = (dateString: string | null) => {
     if (!dateString) return "-";
@@ -108,7 +63,7 @@ export const AuditReportsPage = ({ onBack, onPrintAudit, isAdmin = false }: Audi
               </div>
             ) : (
               <div className="space-y-3">
-                {audits.map((audit: any) => (
+                {audits.map((audit) => (
                   <article
                     key={audit.id}
                     className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 border rounded-lg hover:bg-muted/50 transition-colors"

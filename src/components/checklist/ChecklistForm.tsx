@@ -18,42 +18,14 @@ import {
   Loader2,
   CheckCircle,
   WifiOff,
+  CloudUpload,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { SectionWithItems, ChecklistItemWithResult } from "@/hooks/useAudits";
-import { uploadAuditImage } from "@/lib/supabase-service";
-import { db } from "./db";
+import { useAudits, ChecklistItemWithResult } from "@/hooks/useAudits";
+import { useSyncStatus } from "@/hooks/useSyncStatus";
+import { IncompleteChecklistError } from "@/lib/repo";
 
-type AuditsHook = {
-  currentAudit: any;
-  checklistSections: SectionWithItems[];
-  setChecklistSections: React.Dispatch<
-    React.SetStateAction<SectionWithItems[]>
-  >;
-  startNewAudit: (locationName?: string, locationId?: string) => Promise<any>;
-  saveItems: (
-    auditId: string,
-    items: {
-      checklist_item_id: string;
-      result: string | null;
-      observation: string | null;
-    }[]
-  ) => Promise<boolean>;
-  finishAudit: (
-    auditId: string,
-    summary: {
-      conforme_count: number;
-      nao_conforme_count: number;
-      nao_aplicavel_count: number;
-    },
-    items?: {
-      checklist_item_id: string;
-      result: string | null;
-      observation: string | null;
-    }[]
-  ) => Promise<boolean>;
-  loading: boolean;
-};
+type AuditsHook = ReturnType<typeof useAudits>;
 
 interface ChecklistFormProps {
   onBack: () => void;
@@ -61,6 +33,8 @@ interface ChecklistFormProps {
   auditsHook: AuditsHook;
   isEditing?: boolean;
 }
+
+const OBSERVATION_DEBOUNCE_MS = 800;
 
 export const ChecklistForm = ({
   onBack,
@@ -72,12 +46,15 @@ export const ChecklistForm = ({
   const {
     currentAudit,
     checklistSections,
-    setChecklistSections,
     startNewAudit,
-    saveItems,
+    saveItem,
+    addPhoto,
     finishAudit,
     loading,
+    checklistUnavailable,
   } = auditsHook;
+  const { online, pending: pendingSync } = useSyncStatus();
+  const isOffline = !online;
 
   const [currentSection, setCurrentSection] = useState(0);
   const [saving, setSaving] = useState(false);
@@ -85,146 +62,48 @@ export const ChecklistForm = ({
   const [uploadingImage, setUploadingImage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [activeItemId, setActiveItemId] = useState<string | null>(null);
-  // Per-item saving state: only blocks the item being saved
+  // Tudo é gravado no aparelho na hora; "salvando" só aparece durante o debounce da observação.
   const [savingItems, setSavingItems] = useState<Set<string>>(new Set());
-  const [isOffline, setIsOffline] = useState(!navigator.onLine);
 
-  // Refs for stable access inside async callbacks/timeouts
-  const blobUrlsRef = useRef<string[]>([]);
-  const sectionsRef = useRef(checklistSections);
-  const currentAuditRef = useRef(currentAudit);
+  // Rascunho das observações enquanto o usuário digita (evita o cursor pular com a leitura reativa).
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const draftsRef = useRef(drafts);
+  draftsRef.current = drafts;
   const pendingObservationSaves = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
-  const prevOfflineRef = useRef<boolean | null>(null);
-
-  useEffect(() => { sectionsRef.current = checklistSections; }, [checklistSections]);
-  useEffect(() => { currentAuditRef.current = currentAudit; }, [currentAudit]);
-
-  // Revoke all blob URLs and clear pending debounces on unmount
-  useEffect(() => {
-    return () => {
-      blobUrlsRef.current.forEach(url => URL.revokeObjectURL(url));
-      pendingObservationSaves.current.forEach(timeout => clearTimeout(timeout));
-    };
-  }, []);
-
-  useEffect(() => {
-    const handleOnline = () => setIsOffline(false);
-    const handleOffline = () => setIsOffline(true);
-    window.addEventListener("online", handleOnline);
-    window.addEventListener("offline", handleOffline);
-    return () => {
-      window.removeEventListener("online", handleOnline);
-      window.removeEventListener("offline", handleOffline);
-    };
-  }, []);
+  const currentAuditRef = useRef(currentAudit);
+  currentAuditRef.current = currentAudit;
 
   const showStartForm = !isEditing && !currentAudit;
 
-  // Process the offline sync queue when connectivity is restored
-  const processSyncQueue = useCallback(async () => {
-    const pendingItems = await db.syncQueue
-      .where("status")
-      .anyOf(["pending", "processing"])
-      .toArray();
-    if (pendingItems.length === 0) return;
+  const persistObservation = useCallback(async (itemId: string, observation: string) => {
+    const audit = currentAuditRef.current;
+    if (!audit) return;
+    await saveItem(audit.id, itemId, { observation });
+    setDrafts(prev => {
+      if (prev[itemId] !== observation) return prev; // continuou digitando
+      const { [itemId]: _, ...rest } = prev;
+      return rest;
+    });
+    setSavingItems(prev => {
+      const next = new Set(prev);
+      next.delete(itemId);
+      return next;
+    });
+  }, [saveItem]);
 
-    let synced = 0;
-    for (const item of pendingItems) {
-      await db.syncQueue.update(item.id!, { status: "processing" });
-      try {
-        if (item.action === "UPLOAD_IMAGE") {
-          const { auditId, itemId, file, localUrl } = item.payload as {
-            auditId: string;
-            itemId: string;
-            file: File;
-            localUrl: string;
-          };
-          const { data: imageUrl, error } = await uploadAuditImage(file, auditId, itemId);
-          if (error) throw new Error(typeof error === "string" ? error : "Upload failed");
-
-          if (imageUrl && localUrl) {
-            URL.revokeObjectURL(localUrl);
-            blobUrlsRef.current = blobUrlsRef.current.filter(u => u !== localUrl);
-            setChecklistSections(prev =>
-              prev.map(section => ({
-                ...section,
-                items: section.items.map(i => {
-                  if (i.id !== itemId) return i;
-                  return { ...i, photos: (i.photos || []).map(p => p === localUrl ? imageUrl : p) };
-                }),
-              }))
-            );
-          }
-
-          await db.syncQueue.delete(item.id!);
-          synced++;
-        }
-      } catch {
-        await db.syncQueue.update(item.id!, {
-          status: "failed",
-          retryCount: (item.retryCount || 0) + 1,
-        });
-      }
-    }
-
-    if (synced > 0) {
-      toast({
-        title: "Sincronização concluída",
-        description: `${synced} ${synced === 1 ? "item enviado" : "itens enviados"} para a nuvem.`,
-      });
-    }
-  }, [setChecklistSections, toast]);
-
-  // Trigger sync on mount (if already online) and on every offline→online transition
+  // Ao sair da tela, grava o que ainda estava no debounce (antes era descartado).
   useEffect(() => {
-    const wasOffline = prevOfflineRef.current;
-    prevOfflineRef.current = isOffline;
-    if (!isOffline && (wasOffline === true || wasOffline === null)) {
-      processSyncQueue();
-    }
-  }, [isOffline, processSyncQueue]);
-
-  const autoSaveItem = useCallback(async (
-    itemId: string,
-    result: string | null,
-    observation: string | null,
-  ) => {
-    if (!currentAudit || !result) return;
-
-    setSavingItems(prev => new Set(prev).add(itemId));
-    try {
-      const success = await saveItems(currentAudit.id, [{
-        checklist_item_id: itemId,
-        result,
-        observation,
-      }]);
-
-      if (!success) {
-        toast({
-          title: isOffline ? "Salvo localmente" : "Falha ao salvar automaticamente",
-          description: isOffline
-            ? "O item será sincronizado quando a conexão voltar."
-            : `O item não pôde ser salvo. (item_id: ${itemId})`,
-          // No destructive variant for offline local saves — those are expected
-          variant: isOffline ? undefined : "destructive",
-        });
-      }
-    } catch (err: any) {
-      const errorMessage = err?.message || err?.toString() || "Erro desconhecido";
-      console.error("[ChecklistForm] Auto-save error:", err);
-      toast({
-        title: "Erro no salvamento automático",
-        description: `Detalhes: ${errorMessage}`,
-        variant: "destructive",
+    const timers = pendingObservationSaves.current;
+    return () => {
+      timers.forEach((timeout, itemId) => {
+        clearTimeout(timeout);
+        const audit = currentAuditRef.current;
+        const text = draftsRef.current[itemId];
+        if (audit && text !== undefined) void saveItem(audit.id, itemId, { observation: text });
       });
-    } finally {
-      setSavingItems(prev => {
-        const next = new Set(prev);
-        next.delete(itemId);
-        return next;
-      });
-    }
-  }, [currentAudit, saveItems, toast, isOffline]);
+      timers.clear();
+    };
+  }, [saveItem]);
 
   const handleStartAudit = async () => {
     if (!locationName.trim()) {
@@ -239,22 +118,29 @@ export const ChecklistForm = ({
     setSaving(true);
     try {
       await startNewAudit(locationName.trim());
-    } catch (err: any) {
-      const errorMessage = err?.message || err?.toString() || "Erro desconhecido";
       toast({
-        title: "Erro ao iniciar auditoria",
-        description: `Detalhes: ${errorMessage}`,
-        variant: "destructive",
+        title: "Auditoria iniciada",
+        description: isOffline
+          ? "Criada no aparelho. Será enviada quando a conexão voltar."
+          : "Nova auditoria criada com sucesso.",
       });
+    } catch (err) {
+      const message = (err as Error)?.message === "checklist_unavailable"
+        ? "O checklist ainda não foi baixado. Abra o app com internet uma vez para usar offline."
+        : (err as Error)?.message || "Erro desconhecido";
+      toast({ title: "Erro ao iniciar auditoria", description: message, variant: "destructive" });
     }
     setSaving(false);
   };
 
   const sections = checklistSections;
   const currentSectionData = sections[currentSection];
-  const currentSectionItems = currentSectionData?.items || [];
+  const currentSectionItems = useMemo(
+    () => (currentSectionData?.items || []).map(item =>
+      drafts[item.id] !== undefined ? { ...item, observation: drafts[item.id] } : item),
+    [currentSectionData, drafts],
+  );
 
-  // Memoize expensive flatMap operations — each previously recalculated independently on every render
   const allItems = useMemo(() => sections.flatMap(s => s.items), [sections]);
   const progress = useMemo(
     () => allItems.length > 0 ? (allItems.filter(i => i.result !== null).length / allItems.length) * 100 : 0,
@@ -278,65 +164,27 @@ export const ChecklistForm = ({
     return total > 0 ? Math.round((conforme / total) * 100) : null;
   };
 
-  const updateItemStatus = (
-    itemId: string,
-    result: ChecklistItemWithResult["result"],
-  ) => {
-    const currentItem = sections.flatMap(s => s.items).find(i => i.id === itemId);
-
-    setChecklistSections(prev =>
-      prev.map(section => ({
-        ...section,
-        items: section.items.map(item =>
-          item.id === itemId ? { ...item, result } : item
-        ),
-      }))
-    );
-
-    if (result !== null) {
-      autoSaveItem(itemId, result, currentItem?.observation || null);
-    }
+  const updateItemStatus = (itemId: string, result: ChecklistItemWithResult["result"]) => {
+    if (!currentAudit) return;
+    const draft = drafts[itemId];
+    saveItem(currentAudit.id, itemId, draft !== undefined ? { result, observation: draft } : { result })
+      .catch(err => toast({
+        title: "Erro ao salvar no aparelho",
+        description: (err as Error)?.message || "Erro desconhecido",
+        variant: "destructive",
+      }));
   };
 
-  // Debounced: updates local state immediately, auto-saves 1.5s after last keystroke
   const updateItemObservations = useCallback((itemId: string, observation: string) => {
-    setChecklistSections(prev =>
-      prev.map(section => ({
-        ...section,
-        items: section.items.map(item =>
-          item.id === itemId ? { ...item, observation } : item
-        ),
-      }))
-    );
-
+    setDrafts(prev => ({ ...prev, [itemId]: observation }));
+    setSavingItems(prev => new Set(prev).add(itemId));
     const existing = pendingObservationSaves.current.get(itemId);
     if (existing) clearTimeout(existing);
-
-    const timeout = setTimeout(async () => {
+    pendingObservationSaves.current.set(itemId, setTimeout(() => {
       pendingObservationSaves.current.delete(itemId);
-      const audit = currentAuditRef.current;
-      if (!audit) return;
-      const currentItem = sectionsRef.current.flatMap(s => s.items).find(i => i.id === itemId);
-      if (!currentItem?.result) return;
-
-      setSavingItems(prev => new Set(prev).add(itemId));
-      try {
-        await saveItems(audit.id, [{
-          checklist_item_id: itemId,
-          result: currentItem.result,
-          observation,
-        }]);
-      } finally {
-        setSavingItems(prev => {
-          const next = new Set(prev);
-          next.delete(itemId);
-          return next;
-        });
-      }
-    }, 1500);
-
-    pendingObservationSaves.current.set(itemId, timeout);
-  }, [setChecklistSections, saveItems]);
+      void persistObservation(itemId, observation);
+    }, OBSERVATION_DEBOUNCE_MS));
+  }, [persistObservation]);
 
   const handleTakePhoto = (itemId: string) => {
     setActiveItemId(itemId);
@@ -348,72 +196,18 @@ export const ChecklistForm = ({
     if (!file || !activeItemId || !currentAudit) return;
 
     setUploadingImage(activeItemId);
-
     try {
-      if (isOffline) {
-        const localUrl = URL.createObjectURL(file);
-        blobUrlsRef.current.push(localUrl);
-
-        await db.syncQueue.add({
-          action: "UPLOAD_IMAGE",
-          // localUrl stored so the sync worker can swap it for the real URL later
-          payload: { auditId: currentAudit.id, itemId: activeItemId, file, localUrl },
-          createdAt: new Date().toISOString(),
-          status: "pending",
-        });
-
-        setChecklistSections(prev =>
-          prev.map(section => ({
-            ...section,
-            items: section.items.map(item =>
-              item.id === activeItemId
-                ? { ...item, photos: [...(item.photos || []), localUrl] }
-                : item
-            ),
-          }))
-        );
-
-        toast({
-          title: "Foto salva no dispositivo",
-          description: "Será enviada para a nuvem quando a conexão voltar.",
-        });
-        return;
-      }
-
-      const { data: imageUrl, error } = await uploadAuditImage(
-        file,
-        currentAudit.id,
-        activeItemId,
-      );
-
-      if (error) {
-        toast({
-          title: "Erro ao enviar imagem",
-          description: `Falha no upload: ${error}`,
-          variant: "destructive",
-        });
-      } else if (imageUrl) {
-        setChecklistSections(prev =>
-          prev.map(section => ({
-            ...section,
-            items: section.items.map(item =>
-              item.id === activeItemId
-                ? { ...item, photos: [...(item.photos || []), imageUrl] }
-                : item
-            ),
-          }))
-        );
-        toast({
-          title: "Imagem enviada",
-          description: "Foto adicionada com sucesso.",
-        });
-      }
-    } catch (err: any) {
-      const errorMessage = err?.message || err?.toString() || "Erro desconhecido ao enviar imagem";
-      console.error("[ChecklistForm] Image upload error:", err);
+      await addPhoto(currentAudit.id, activeItemId, file);
       toast({
-        title: "Erro no upload da imagem",
-        description: `Detalhes: ${errorMessage}`,
+        title: "Foto adicionada",
+        description: isOffline
+          ? "Guardada no aparelho. Será enviada quando a conexão voltar."
+          : "A foto está sendo enviada para a nuvem.",
+      });
+    } catch (err) {
+      toast({
+        title: "Erro ao salvar a foto",
+        description: (err as Error)?.message || "Erro desconhecido",
         variant: "destructive",
       });
     } finally {
@@ -427,26 +221,37 @@ export const ChecklistForm = ({
     if (!currentAudit) return;
 
     setSaving(true);
-    const itemsToSave = allItems
-      .filter(item => item.result !== null)
-      .map(item => ({
-        checklist_item_id: item.id,
-        result: item.result,
-        observation: item.observation || null,
-      }));
-
     try {
-      const success = await finishAudit(currentAudit.id, summary, itemsToSave);
-      if (success) onSave();
-    } catch (err: any) {
-      const errorMessage = err?.message || err?.toString() || "Erro desconhecido";
+      // Garante que observações ainda no debounce entrem antes de finalizar.
+      const timers = pendingObservationSaves.current;
+      await Promise.all([...timers.keys()].map(itemId => {
+        clearTimeout(timers.get(itemId)!);
+        timers.delete(itemId);
+        return persistObservation(itemId, draftsRef.current[itemId] ?? "");
+      }));
+      await finishAudit(currentAudit.id);
       toast({
-        title: "Erro ao finalizar auditoria",
-        description: `Detalhes: ${errorMessage}`,
-        variant: "destructive",
+        title: "Auditoria concluída",
+        description: isOffline
+          ? "Finalizada no aparelho. Será enviada quando a conexão voltar."
+          : "Auditoria finalizada com sucesso!",
       });
+      onSave();
+    } catch (err) {
+      if (err instanceof IncompleteChecklistError) {
+        toast({
+          title: "Checklist incompleto",
+          description: `Responda todos os itens antes de finalizar (${err.answered}/${err.total} respondidos).`,
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Erro ao finalizar auditoria",
+          description: (err as Error)?.message || "Erro desconhecido",
+          variant: "destructive",
+        });
+      }
     }
-
     setSaving(false);
   };
 
@@ -458,6 +263,20 @@ export const ChecklistForm = ({
       default: return "bg-secondary text-secondary-foreground";
     }
   };
+
+  if (checklistUnavailable) {
+    return (
+      <div className="space-y-4 py-20 text-center">
+        <WifiOff className="w-10 h-10 mx-auto text-muted-foreground" />
+        <p className="text-muted-foreground">
+          O checklist desta auditoria ainda não foi baixado neste aparelho. Conecte-se à internet e tente de novo.
+        </p>
+        <Button variant="outline" onClick={onBack}>
+          <ArrowLeft className="w-4 h-4 mr-2" /> Voltar
+        </Button>
+      </div>
+    );
+  }
 
   if (showStartForm) {
     return (
@@ -550,32 +369,38 @@ export const ChecklistForm = ({
 
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div className="flex items-center space-x-4">
-          <Button variant="outline" onClick={onBack}>
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Voltar
+        <div className="flex items-center gap-3 sm:gap-4 w-full sm:w-auto min-w-0">
+          {/* No celular o Voltar vira só ícone (44px) para o título caber em uma linha. */}
+          <Button variant="outline" onClick={onBack} aria-label="Voltar" className="shrink-0 h-11 w-11 p-0 sm:h-10 sm:w-auto sm:px-4">
+            <ArrowLeft className="w-4 h-4 sm:mr-2" />
+            <span className="hidden sm:inline">Voltar</span>
           </Button>
-          <div>
-            <div className="flex items-center gap-3">
-              <h1 className="text-2xl sm:text-3xl font-bold text-primary">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 sm:gap-3">
+              <h1 className="text-xl sm:text-3xl font-bold text-primary truncate">
                 Checklist RDC 216/2004
               </h1>
               {isOffline && (
-                <Badge variant="destructive" className="flex items-center gap-1 px-2 py-0.5 animate-pulse">
+                <Badge variant="destructive" className="shrink-0 hidden sm:flex items-center gap-1 px-2 py-0.5 animate-pulse">
                   <WifiOff className="w-3 h-3" /> Offline
                 </Badge>
               )}
             </div>
-            <p className="text-muted-foreground text-sm">
+            <p className="text-muted-foreground text-sm truncate">
               {currentAudit.location || "Auditoria em andamento"}
             </p>
           </div>
         </div>
         <div className="flex items-center space-x-2 w-full sm:w-auto">
-          {savingItems.size > 0 && (
+          {savingItems.size > 0 ? (
             <span className="text-xs text-muted-foreground flex items-center gap-1">
               <Loader2 className="w-3 h-3 animate-spin" />
               Salvando...
+            </span>
+          ) : pendingSync > 0 && (
+            <span className="text-xs text-muted-foreground flex items-center gap-1" title="Salvo no aparelho, aguardando envio">
+              <CloudUpload className="w-3 h-3" />
+              {pendingSync} para enviar
             </span>
           )}
           {canFinish ? (
@@ -721,7 +546,6 @@ export const ChecklistForm = ({
                   onClick={() =>
                     updateItemStatus(item.id, item.result === "conforme" ? null : "conforme")
                   }
-                  disabled={savingItems.has(item.id)}
                   className={`flex items-center justify-center gap-2 rounded-xl border text-xs font-medium transition-all ${
                     item.result === "conforme"
                       ? "bg-success text-white shadow-md ring-2 ring-success/30 scale-[1.02]"
@@ -736,7 +560,6 @@ export const ChecklistForm = ({
                   onClick={() =>
                     updateItemStatus(item.id, item.result === "nao_conforme" ? null : "nao_conforme")
                   }
-                  disabled={savingItems.has(item.id)}
                   className={`flex items-center justify-center gap-2 rounded-xl border text-xs font-medium transition-all ${
                     item.result === "nao_conforme"
                       ? "bg-destructive text-white shadow-md ring-2 ring-destructive/30 scale-[1.02]"
@@ -751,7 +574,6 @@ export const ChecklistForm = ({
                   onClick={() =>
                     updateItemStatus(item.id, item.result === "nao_aplicavel" ? null : "nao_aplicavel")
                   }
-                  disabled={savingItems.has(item.id)}
                   className={`flex items-center justify-center gap-2 rounded-xl border text-xs font-medium transition-all ${
                     item.result === "nao_aplicavel"
                       ? "bg-muted text-foreground shadow-md ring-2 ring-muted/40 scale-[1.02]"
